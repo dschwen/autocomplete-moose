@@ -6,6 +6,8 @@ propertyNamePrefixPattern = /[a-zA-Z]+[-a-zA-Z]*$/
 pesudoSelectorPrefixPattern = /:(:)?([a-z]+[a-z-]*)?$/
 tagSelectorPrefixPattern = /(^|\s|,)([a-z]+)?$/
 
+console.log 'loading autocomplete-moose'
+
 module.exports =
   selector: '.input.moose'
   disableForSelector: '.input.moose .comment, .input.moose .string'
@@ -18,8 +20,13 @@ module.exports =
   filterSuggestions: true
 
   getSuggestions: (request) ->
+    console.log request
     completions = null
-    completions = ['[Kernels]']
+    completions = [
+      {text: '[Kernels]'}
+      {text: '[Materials]'}
+    ]
+    console.log completions
     completions
 
   onDidInsertSuggestion: ({editor, suggestion}) ->
@@ -28,8 +35,5 @@ module.exports =
   triggerAutocomplete: (editor) ->
     atom.commands.dispatch(atom.views.getView(editor), 'autocomplete-plus:activate', {activatedManually: false})
 
-hasScope = (scopesArray, scope) ->
-  scopesArray.indexOf(scope) isnt -1
-
-firstCharsEqual = (str1, str2) ->
-  str1[0].toLowerCase() is str2[0].toLowerCase()
+  getCurrentPath: (editor, position) ->
+    null
