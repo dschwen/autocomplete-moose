@@ -9,9 +9,11 @@ blockCloseTop = /\[\]/
 blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
 blockCloseOneLevel = /\[\.\.\/\]/
 
+syntaxFile = /^(yaml|syntax)(_dump_.*-(opt|dbg|oprof))$/
+
 # each moose input file in the project dir could have its own moose app and yaml/syntax associated
 # this table points to the app dir for each editor path
-appdir = {}
+appDirs = {}
 
 module.exports =
   selector: '.input.moose'
@@ -26,9 +28,18 @@ module.exports =
 
   getSuggestions: (request) ->
     console.log request
-
     {editor,bufferPosition} = request
-    console.log editor.getPath()
+
+    filePath = path.dirname editor.getPath()
+    if filePath in appDirs
+      console.log 'loaded:', appDirs[filePath]
+      # do immediate completion
+    else
+      # return a promise that gets fulfilled as soon as the syntax data is loaded
+      console.log 'Not yet loaded!'
+      dir = @findAppDir filePath
+      loadSyntax dir
+      appDirs[filePath] = dir
 
     path = @getCurrentPath(editor, bufferPosition)
     console.log path
@@ -66,7 +77,7 @@ module.exports =
     path = []
     head = 0
 
-    while true
+    loop
       # test the current line for block markers
       if blockOpenTop.test(line)
         path.unshift(blockOpenTop.exec(line)[1])
@@ -92,14 +103,36 @@ module.exports =
 
     path
 
+  findAppDir: (appdir) ->
+    if not appdir?
+      atom.notifications.addError 'File not saved, nowhere to search for MOOSE syntax data.', dismissable: true
+      return null
+
+    loop
+      # list all files
+      for file in fs.readdirSync(appdir)
+        match = syntaxFile.exec(file)
+        if match and fs.existsSync(path.join appdir, 'yaml'+match[2]) and fs.existsSync(path.join appdir, 'syntax'+match[2])
+          console.log 'found: ', appdir, match[2]
+          return path: appdir, suffix: match[2]
+
+      # go to parent
+      previous_path = appdir
+      appdir = path.join appdir, '..'
+
+      if appdir is previous_path
+        atom.notifications.addError 'No MOOSE syntax file found. Use peacock to generate.', dismissable: true
+        return null
+
   # unpickle the peacock YAML and syntax files
-  loadSyntax: ->
-    fs.readFile '/Users/xxx/Programs/moose/modules/combined/syntax_dump_modules-opt', 'utf8', (error, content) =>
+  loadSyntax: (syntax) ->
+    {appPath, appSuffix} = syntax
+    fs.readFile path.join(appPath, "syntax#{appSuffix}"), 'utf8', (error, content) =>
       @syntax = content.split('\n') unless error?
       console.log @syntax
       return
 
-    fs.readFile ('/Users/xxx/Programs/moose/modules/combined/yaml_dump_modules-opt'), (error, pickledata) =>
+    fs.readFile path.join(appPath, "yaml#{appSuffix}"), (error, pickledata) =>
       if error?
         return
       pickle.loads (pickledata), (jsondata) =>
