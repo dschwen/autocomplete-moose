@@ -8,6 +8,9 @@
   "engines": {
     "atom": ">=0.174.0 <2.0.0"
   },
+  "dependencies": {
+    "pickle": "^0.2.0"
+  },
   "providedServices": {
     "autocomplete.provider": {
       "versions": {

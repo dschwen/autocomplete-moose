@@ -1,5 +1,6 @@
 fs = require 'fs'
 path = require 'path'
+pickle = require 'pickle'
 
 emptyLine = /^\s*$/
 
@@ -7,6 +8,10 @@ blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
 blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
 blockCloseOneLevel = /\[\.\.\/\]/
+
+# each moose input file in the project dir could have its own moose app and yaml/syntax associated
+# this table points to the app dir for each editor path
+appdir = {}
 
 module.exports =
   selector: '.input.moose'
@@ -21,7 +26,9 @@ module.exports =
 
   getSuggestions: (request) ->
     console.log request
+
     {editor,bufferPosition} = request
+    console.log editor.getPath()
 
     path = @getCurrentPath(editor, bufferPosition)
     console.log path
@@ -72,7 +79,7 @@ module.exports =
           head -= 1
 
       if blockCloseTop.test(line)
-        return ''
+        return null
 
       if blockCloseOneLevel.test(line)
         head += 1
@@ -80,7 +87,22 @@ module.exports =
       # decrement row and fetch line (if we have not found a path we assume we are at the top level)
       row -= 1
       if row < 0
-        return ''
+        return null
       line = editor.lineTextForBufferRow(row)
 
-    path.join('/')
+    path
+
+  # unpickle the peacock YAML and syntax files
+  loadSyntax: ->
+    fs.readFile '/Users/xxx/Programs/moose/modules/combined/syntax_dump_modules-opt', 'utf8', (error, content) =>
+      @syntax = content.split('\n') unless error?
+      console.log @syntax
+      return
+
+    fs.readFile ('/Users/xxx/Programs/moose/modules/combined/yaml_dump_modules-opt'), (error, pickledata) =>
+      if error?
+        return
+      pickle.loads (pickledata), (jsondata) =>
+        @yaml = jsondata
+        console.log @yaml
+      return
