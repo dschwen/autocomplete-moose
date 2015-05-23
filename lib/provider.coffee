@@ -59,10 +59,8 @@ module.exports =
   # w contains the syntax applicable to the current file
   computeCompletion: (request, w) ->
     {editor,bufferPosition} = request
-
     configPath = @getCurrentConfigPath(editor, bufferPosition)
-    console.log configPath
-    completions = null
+    completions = []
 
     # for empty lines we suggest parameters
     if @isLineEmpty(editor, bufferPosition)
@@ -71,10 +69,27 @@ module.exports =
         {text: 'execute_on = {$1}'}
       ]
     else if @isOpenBracketPair(editor, bufferPosition)
-      completions = [
-        {text: 'Kernels'}
-        {text: 'Materials'}
-      ]
+      # go over all entries in the syntax file to find a match
+      for suggestionText in w.syntax
+        suggestion = suggestionText.split '/'
+
+        # check if the suggestion is a match
+        match = true
+        if suggestion.length <= configPath.length
+          match = false
+        else
+          for configPathElement, index in configPath
+            if suggestion[index] != '*' and suggestion[index] != configPathElement
+              match = false
+              break
+
+        if match
+          completion = (if configPath.length > 0 then './' else '') +
+                       suggestion[configPath.length]
+
+          # add to suggestions if it is a new suggestion
+          if completion not in completions
+            completions.push {text: completion}
 
     completions
 
@@ -126,7 +141,7 @@ module.exports =
           head -= 1
 
       if blockCloseTop.test(line)
-        return null
+        return []
 
       if blockCloseOneLevel.test(line)
         head += 1
@@ -134,7 +149,7 @@ module.exports =
       # decrement row and fetch line (if we have not found a path we assume we are at the top level)
       row -= 1
       if row < 0
-        return null
+        return []
       line = editor.lineTextForBufferRow(row)
 
     configPath
