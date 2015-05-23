@@ -27,6 +27,9 @@ module.exports =
   # efficiency.
   filterSuggestions: true
 
+  # entry point for the suggestion provider
+  # this function will load the syntax files if neccessary before callling
+  # the actual completion suggestion builder
   getSuggestions: (request) ->
     filePath = path.dirname request.editor.getPath()
 
@@ -35,27 +38,42 @@ module.exports =
 
     # check if the syntax is already loaded, currently loading, or not requested yet
     if dir.appPath of syntaxWarehouse
+      w = syntaxWarehouse[dir.appPath]
+
+      # still loading
+      if 'promise' of w
+        w.promise.then =>
+          @computeCompletion request, w
+
       # syntax is loaded
-      return @computeCompletion request, appDirs[filePath]
+      else
+        @computeCompletion request, w
+
+    # return a promise that gets fulfilled as soon as the syntax data is loaded
     else
-      # return a promise that gets fulfilled as soon as the syntax data is loaded
       loaded = @loadSyntax dir
-      completePromise = loaded.then =>
-        @computeCompletion request, appDirs[filePath]
+      loaded.then =>
+        @computeCompletion request, syntaxWarehouse[dir.appPath]
 
-      return completePromise
-
-  computeCompletion: (request, dir) ->
+  # build the suggestion list
+  # w contains the syntax applicable to the current file
+  computeCompletion: (request, w) ->
     {editor,bufferPosition} = request
 
     configPath = @getCurrentConfigPath(editor, bufferPosition)
     console.log configPath
     completions = null
 
+    # for empty lines we suggest parameters
     if @isLineEmpty(editor, bufferPosition)
       completions = [
-        {text: '[Kernels]'}
-        {text: '[Materials]'}
+        {text: 'type = {$1}'}
+        {text: 'execute_on = {$1}'}
+      ]
+    else if @isOpenBracketPair(editor, bufferPosition)
+      completions = [
+        {text: 'Kernels'}
+        {text: 'Materials'}
       ]
 
     completions
@@ -69,6 +87,17 @@ module.exports =
   # check if the current line is empty (in that case we complete for parameter names or block names)
   isLineEmpty: (editor, position) ->
     emptyLine.test(editor.lineTextForBufferRow(position.row))
+
+  # check if there is an square bracket pair around the cursor
+  isOpenBracketPair: (editor, position) ->
+    if position.column < 1
+      return false
+    line = editor.lineTextForBufferRow position.row
+    return line.substr(position.column-1, 2) == '[]'
+
+  # TODO check if we are after the equal sign in a parameter line
+  isParameterDeclartion: (editor, position) ->
+    return false
 
   # drop all comments from a given input file line
   dropComment: (line) ->
