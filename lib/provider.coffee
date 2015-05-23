@@ -14,6 +14,7 @@ syntaxFile = /^(yaml|syntax)(_dump_.*-(opt|dbg|oprof))$/
 # each moose input file in the project dir could have its own moose app and yaml/syntax associated
 # this table points to the app dir for each editor path
 appDirs = {}
+syntaxWarehouse = {}
 
 module.exports =
   selector: '.input.moose'
@@ -27,22 +28,26 @@ module.exports =
   filterSuggestions: true
 
   getSuggestions: (request) ->
-    console.log request
-    {editor,bufferPosition} = request
+    filePath = path.dirname request.editor.getPath()
 
-    filePath = path.dirname editor.getPath()
-    if filePath in appDirs
-      console.log 'loaded:', appDirs[filePath]
-      # do immediate completion
+    # lookup application for current input file (cached)
+    dir = @findApp filePath
+
+    # check if the syntax is already loaded, currently loading, or not requested yet
+    if dir.appPath of syntaxWarehouse
+      # syntax is loaded
+      return @computeCompletion request, appDirs[filePath]
     else
       # return a promise that gets fulfilled as soon as the syntax data is loaded
-      console.log 'Not yet loaded!'
-      dir = @findAppDir filePath
-      loadSyntax dir
-      appDirs[filePath] = dir
+      loaded = @loadSyntax dir
+      #loaded.then =>
+      #
 
-    path = @getCurrentPath(editor, bufferPosition)
-    console.log path
+  computeCompletion: (request, dir) ->
+    {editor,bufferPosition} = request
+
+    configPath = @getCurrentConfigPath(editor, bufferPosition)
+    console.log configPath
     completions = null
 
     if @isLineEmpty(editor, bufferPosition)
@@ -71,21 +76,21 @@ module.exports =
     line
 
   # determine the active input file path at the current position
-  getCurrentPath: (editor, position) ->
+  getCurrentConfigPath: (editor, position) ->
     row = position.row
     line = editor.lineTextForBufferRow(row).substr(0, position.column)
-    path = []
+    configPath = []
     head = 0
 
     loop
       # test the current line for block markers
       if blockOpenTop.test(line)
-        path.unshift(blockOpenTop.exec(line)[1])
+        configPath.unshift(blockOpenTop.exec(line)[1])
         break
 
       if blockOpenOneLevel.test(line)
         if head == 0
-          path.unshift(blockOpenOneLevel.exec(line)[1])
+          configPath.unshift(blockOpenOneLevel.exec(line)[1])
         else
           head -= 1
 
@@ -101,41 +106,52 @@ module.exports =
         return null
       line = editor.lineTextForBufferRow(row)
 
-    path
+    configPath
 
-  findAppDir: (appdir) ->
-    if not appdir?
+  findApp: (filePath) ->
+    if not filePath?
       atom.notifications.addError 'File not saved, nowhere to search for MOOSE syntax data.', dismissable: true
       return null
 
+    if filePath of appDirs
+      return appDirs[filePath]
+
+    searchPath = filePath
     loop
       # list all files
-      for file in fs.readdirSync(appdir)
+      for file in fs.readdirSync(searchPath)
         match = syntaxFile.exec(file)
-        if match and fs.existsSync(path.join appdir, 'yaml'+match[2]) and fs.existsSync(path.join appdir, 'syntax'+match[2])
-          console.log 'found: ', appdir, match[2]
-          return path: appdir, suffix: match[2]
+        if match and fs.existsSync(path.join searchPath, 'yaml'+match[2]) and fs.existsSync(path.join searchPath, 'syntax'+match[2])
+          console.log 'found app: ', searchPath, match[2]
+          appDirs[filePath] = {appPath: searchPath, appSuffix: match[2]}
+          return appDirs[filePath]
 
       # go to parent
-      previous_path = appdir
-      appdir = path.join appdir, '..'
+      previous_path = searchPath
+      searchPath = path.join searchPath, '..'
 
-      if appdir is previous_path
+      if searchPath is previous_path
         atom.notifications.addError 'No MOOSE syntax file found. Use peacock to generate.', dismissable: true
         return null
 
   # unpickle the peacock YAML and syntax files
   loadSyntax: (syntax) ->
     {appPath, appSuffix} = syntax
+
+    # prepare entry in the syntax warehouse TODO only insert if both components are loaded, otherwise insert promise
+    syntaxWarehouse[appPath] = {}
+
+    # load syntax fole for valid block hierarchy
     fs.readFile path.join(appPath, "syntax#{appSuffix}"), 'utf8', (error, content) =>
-      @syntax = content.split('\n') unless error?
-      console.log @syntax
+      syntaxWarehouse[appPath].syntax = content.split('\n') unless error?
+      console.log syntaxWarehouse[appPath].syntax
       return
 
+    # load yaml file containing parameters and descriptions
     fs.readFile path.join(appPath, "yaml#{appSuffix}"), (error, pickledata) =>
       if error?
         return
       pickle.loads (pickledata), (jsondata) =>
-        @yaml = jsondata
-        console.log @yaml
+        syntaxWarehouse[appPath].yaml = jsondata
+        console.log syntaxWarehouse[appPath].yaml
       return
