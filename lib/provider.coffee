@@ -55,6 +55,21 @@ module.exports =
       loaded.then =>
         @computeCompletion request, syntaxWarehouse[dir.appPath]
 
+  recurseYAMLNode: (node, configPath, matchList) ->
+      yamlPath = root.name.substr(1).split '/'
+
+      # no point in recursing deeper
+      return if yamlPath.length > configPath.length
+
+      # compare paths if we are at the correct level
+      if yamlPath.length == configPath.length
+        console.log yamlPath, configPath
+        # TODO compare with specificity depending on '*'
+
+      # recurse deeper otherwise
+      else
+        @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
+
   # build the suggestion list
   # w contains the syntax applicable to the current file
   computeCompletion: (request, w) ->
@@ -64,10 +79,17 @@ module.exports =
 
     # for empty lines we suggest parameters
     if @isLineEmpty(editor, bufferPosition)
-      completions = [
-        {text: 'type = {$1}'}
-        {text: 'execute_on = {$1}'}
-      ]
+      # parameters cannot exist outside of top level blocks
+      return null if configPath.length == 0
+
+      console.log w.yaml
+
+      # we need to match this to one node in the yaml tree. multiple matches may occur
+      # we will later select the most specific match
+      matchList = []
+      for root in w.yaml
+        recurseYAMLNode root, configPath, matchList
+
     else if @isOpenBracketPair(editor, bufferPosition)
       # go over all entries in the syntax file to find a match
       for suggestionText in w.syntax
