@@ -40,8 +40,10 @@ module.exports =
     else
       # return a promise that gets fulfilled as soon as the syntax data is loaded
       loaded = @loadSyntax dir
-      #loaded.then =>
-      #
+      completePromise = loaded.then =>
+        @computeCompletion request, appDirs[filePath]
+
+      return completePromise
 
   computeCompletion: (request, dir) ->
     {editor,bufferPosition} = request
@@ -135,23 +137,34 @@ module.exports =
         return null
 
   # unpickle the peacock YAML and syntax files
-  loadSyntax: (syntax) ->
-    {appPath, appSuffix} = syntax
+  loadSyntax: (app) ->
+    {appPath, appSuffix} = app
 
     # prepare entry in the syntax warehouse TODO only insert if both components are loaded, otherwise insert promise
-    syntaxWarehouse[appPath] = {}
+    w = syntaxWarehouse[appPath] = {}
 
-    # load syntax fole for valid block hierarchy
-    fs.readFile path.join(appPath, "syntax#{appSuffix}"), 'utf8', (error, content) =>
-      syntaxWarehouse[appPath].syntax = content.split('\n') unless error?
-      console.log syntaxWarehouse[appPath].syntax
-      return
+    # load syntax file for valid block hierarchy
+    syntaxPromise = new Promise (resolve, reject) ->
+      fs.readFile path.join(appPath, "syntax#{appSuffix}"), 'utf8', (error, content) ->
+        reject() if errror?
+        resolve content.split('\n')
 
     # load yaml file containing parameters and descriptions
-    fs.readFile path.join(appPath, "yaml#{appSuffix}"), (error, pickledata) =>
-      if error?
-        return
-      pickle.loads (pickledata), (jsondata) =>
-        syntaxWarehouse[appPath].yaml = jsondata
-        console.log syntaxWarehouse[appPath].yaml
-      return
+    yamlPromise = new Promise (resolve, reject) ->
+      fs.readFile path.join(appPath, "yaml#{appSuffix}"), (error, pickledata) ->
+        reject if error?
+        pickle.loads (pickledata), (jsondata) ->
+          resolve jsondata
+
+    # promise that is fulfilled when all files are loaded
+    loadFiles = Promise.all [
+      syntaxPromise
+      yamlPromise
+    ]
+
+    finishSyntaxSetup = loadFiles.then (result) ->
+      delete w.promise
+      w.syntax = result[0]
+      w.yaml   = result[1]
+
+    w.promise = finishSyntaxSetup
