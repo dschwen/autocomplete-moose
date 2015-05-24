@@ -3,6 +3,7 @@ path = require 'path'
 pickle = require 'pickle'
 
 emptyLine = /^\s*$/
+emptyType = /^\s*type\s*=\s*$/
 
 blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
@@ -101,19 +102,27 @@ module.exports =
   # w contains the syntax applicable to the current file
   computeCompletion: (request, w) ->
     {editor,bufferPosition} = request
-    configPath = @getCurrentConfigPath(editor, bufferPosition)
     completions = []
 
     # for empty lines we suggest parameters
     if @isLineEmpty(editor, bufferPosition)
+      # get the type pseudo path (for the yaml)
+      configPath = @getCurrentConfigPath(editor, bufferPosition, true)
+
       # parameters cannot exist outside of top level blocks
       return null if configPath.length == 0
 
       # find yaml node that matches the current config path best
       node = @matchYAMLNode root, configPath, w
-      #if node?
+      if node?
+        console.log 'found', node
+      else
+        console.log 'not found', w.yaml
 
     else if @isOpenBracketPair(editor, bufferPosition)
+      # ignore type (for the syntax)
+      configPath = @getCurrentConfigPath(editor, bufferPosition, false)
+
       # go over all entries in the syntax file to find a match
       for suggestionText in w.syntax
         suggestion = suggestionText.split '/'
@@ -135,6 +144,22 @@ module.exports =
           # add to suggestions if it is a new suggestion
           if completion not in completions
             completions.push {text: completion}
+
+    else if @isEmptyTypeParameter(editor, bufferPosition)
+      # ignore type (for the syntax)
+      configPath = @getCurrentConfigPath(editor, bufferPosition, false)
+
+      # transform into a '<type>' pseudo path
+      if configPath.length > 1
+        configPath.pop()
+      else
+        configPath.push '<type>'
+
+      # find yaml node that matches the current config path best
+      node = @matchYAMLNode root, configPath, w
+      if node?
+        # iterate over subblocks and add final yaml path element to suggestions
+        console.log 'TODO'
 
     completions
 
@@ -159,6 +184,10 @@ module.exports =
   isParameterDeclartion: (editor, position) ->
     return false
 
+  # check if the current line is empty (in that case we complete for parameter names or block names)
+  isEmptyTypeParameter: (editor, position) ->
+    emptyType.test(editor.lineTextForBufferRow(position.row))
+
   # drop all comments from a given input file line
   dropComment: (line) ->
     cpos = line.indexOf('#')
@@ -167,7 +196,7 @@ module.exports =
     line
 
   # determine the active input file path at the current position
-  getCurrentConfigPath: (editor, position) ->
+  getCurrentConfigPath: (editor, position, addTypePath) ->
     row = position.row
     line = editor.lineTextForBufferRow(row).substr(0, position.column)
     configPath = []
@@ -203,10 +232,14 @@ module.exports =
         return []
       line = editor.lineTextForBufferRow(row)
 
-    # add the <type>/Type pseudo path if we are inside a typed block
-    configPath.push ['<type>', type]... if type?
+    # add the /Type (or /<type>/Type for top level blocks) pseudo path if we are inside a typed block
+    if type? and addTypePath
+      if configPath.length > 1
+        configPath[configPath.length-1] = type
+      else
+        configPath.push ['<type>', type]...
 
-    console.log configPath, type
+    console.log configPath
     configPath
 
   findApp: (filePath) ->
