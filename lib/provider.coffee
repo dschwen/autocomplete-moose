@@ -8,6 +8,7 @@ blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
 blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
 blockCloseOneLevel = /\[\.\.\/\]/
+blockType = /^\s*type\s*=\s*([^#\s]+)/
 
 syntaxFile = /^(yaml|syntax)(_dump_.*-(opt|dbg|oprof))$/
 
@@ -56,19 +57,45 @@ module.exports =
         @computeCompletion request, syntaxWarehouse[dir.appPath]
 
   recurseYAMLNode: (node, configPath, matchList) ->
-      yamlPath = root.name.substr(1).split '/'
+      yamlPath = node.name.substr(1).split '/'
 
       # no point in recursing deeper
       return if yamlPath.length > configPath.length
 
       # compare paths if we are at the correct level
       if yamlPath.length == configPath.length
-        console.log yamlPath, configPath
+        fuzz = 0
+        match = true
         # TODO compare with specificity depending on '*'
+        for configPathElement, index in configPath
+          if yamlPath[index] == '*'
+            fuzz++
+          else if yamlPath[index] != configPathElement
+            match = false
+            break
+
+        # match found
+        if match
+          matchList.push {fuzz: fuzz, node: node}
 
       # recurse deeper otherwise
       else
         @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
+
+  matchYAMLNode: (node, configPath, w) ->
+    # we need to match this to one node in the yaml tree. multiple matches may occur
+    # we will later select the most specific match
+    matchList = []
+    for root in w.yaml
+      @recurseYAMLNode root, configPath, matchList
+
+    # no match found
+    return null if matchList.length == 0
+
+    # sort least fuzz first and return minimum fuzz match
+    matchList.sort (a, b) ->
+      a.fuzz > b.fuzz
+    return matchList[0]
 
   # build the suggestion list
   # w contains the syntax applicable to the current file
@@ -82,13 +109,9 @@ module.exports =
       # parameters cannot exist outside of top level blocks
       return null if configPath.length == 0
 
-      console.log w.yaml
-
-      # we need to match this to one node in the yaml tree. multiple matches may occur
-      # we will later select the most specific match
-      matchList = []
-      for root in w.yaml
-        recurseYAMLNode root, configPath, matchList
+      # find yaml node that matches the current config path best
+      node = @matchYAMLNode root, configPath, w
+      #if node?
 
     else if @isOpenBracketPair(editor, bufferPosition)
       # go over all entries in the syntax file to find a match
@@ -148,7 +171,8 @@ module.exports =
     row = position.row
     line = editor.lineTextForBufferRow(row).substr(0, position.column)
     configPath = []
-    head = 0
+    type = null
+    level = 0
 
     loop
       # test the current line for block markers
@@ -157,16 +181,21 @@ module.exports =
         break
 
       if blockOpenOneLevel.test(line)
-        if head == 0
+        if level == 0
           configPath.unshift(blockOpenOneLevel.exec(line)[1])
         else
-          head -= 1
+          level -= 1
 
       if blockCloseTop.test(line)
         return []
 
       if blockCloseOneLevel.test(line)
-        head += 1
+        level += 1
+
+      # test for a type parameter
+      if blockType.test(line) and level == 0 and type == null
+        type = blockType.exec(line)[1]
+
 
       # decrement row and fetch line (if we have not found a path we assume we are at the top level)
       row -= 1
@@ -174,6 +203,10 @@ module.exports =
         return []
       line = editor.lineTextForBufferRow(row)
 
+    # add the <type>/Type pseudo path if we are inside a typed block
+    configPath.push ['<type>', type]... if type?
+
+    console.log configPath, type
     configPath
 
   findApp: (filePath) ->
