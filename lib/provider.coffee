@@ -3,7 +3,9 @@ path = require 'path'
 pickle = require 'pickle'
 
 emptyLine = /^\s*$/
-emptyType = /^\s*type\s*=\s*$/
+varParameter = /^\s*variable\s*=\s*(#.*|)$/ # TODO parse variables
+typeParameter = /^\s*type\s*=\s*[^\s#]*(#.*|)$/
+otherParameter = /^\s*[^\s#=]*(#.*|)$/
 
 blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
@@ -96,7 +98,7 @@ module.exports =
     # sort least fuzz first and return minimum fuzz match
     matchList.sort (a, b) ->
       a.fuzz > b.fuzz
-    return matchList[0]
+    return matchList[0].node
 
   # build the suggestion list
   # w contains the syntax applicable to the current file
@@ -104,22 +106,8 @@ module.exports =
     {editor,bufferPosition} = request
     completions = []
 
-    # for empty lines we suggest parameters
-    if @isLineEmpty(editor, bufferPosition)
-      # get the type pseudo path (for the yaml)
-      configPath = @getCurrentConfigPath(editor, bufferPosition, true)
-
-      # parameters cannot exist outside of top level blocks
-      return null if configPath.length == 0
-
-      # find yaml node that matches the current config path best
-      node = @matchYAMLNode root, configPath, w
-      if node?
-        console.log 'found', node
-      else
-        console.log 'not found', w.yaml
-
-    else if @isOpenBracketPair(editor, bufferPosition)
+    # for empty [] we suggest blocks
+    if @isOpenBracketPair(editor, bufferPosition)
       # ignore type (for the syntax)
       configPath = @getCurrentConfigPath(editor, bufferPosition, false)
 
@@ -145,7 +133,8 @@ module.exports =
           if completion not in completions
             completions.push {text: completion}
 
-    else if @isEmptyTypeParameter(editor, bufferPosition)
+    # complete for type parameter
+    else if @isTypeParameter(editor, bufferPosition)
       # ignore type (for the syntax)
       configPath = @getCurrentConfigPath(editor, bufferPosition, false)
 
@@ -159,7 +148,30 @@ module.exports =
       node = @matchYAMLNode root, configPath, w
       if node?
         # iterate over subblocks and add final yaml path element to suggestions
-        console.log 'TODO'
+        for subNode in node.subblocks or []
+          completion = (subNode.name.split '/')[-1..][0]
+          completions.push {text: completion}
+
+    # suggest parameters
+    else if @isOtherParameter(editor, bufferPosition)
+      # get the type pseudo path (for the yaml)
+      configPath = @getCurrentConfigPath(editor, bufferPosition, true)
+
+      # parameters cannot exist outside of top level blocks
+      return null if configPath.length == 0
+
+      # TODO merge this with the type unspecific parameters!!!
+      # find yaml node that matches the current config path best
+      node = @matchYAMLNode root, configPath, w
+      if node?
+        # iterate over parameters and add to suggestions
+        for param in node.parameters or []
+          completions.push {
+            displayText: param.name
+            text: param.name + ' = '
+            description: param.description
+            type: 'property'
+          }
 
     completions
 
@@ -184,9 +196,13 @@ module.exports =
   isParameterDeclartion: (editor, position) ->
     return false
 
-  # check if the current line is empty (in that case we complete for parameter names or block names)
-  isEmptyTypeParameter: (editor, position) ->
-    emptyType.test(editor.lineTextForBufferRow(position.row))
+  # check if the current line is a type parameter
+  isTypeParameter: (editor, position) ->
+    typeParameter.test(editor.lineTextForBufferRow(position.row))
+
+  # check if the current line is a type parameter
+  isOtherParameter: (editor, position) ->
+    otherParameter.test(editor.lineTextForBufferRow(position.row))
 
   # drop all comments from a given input file line
   dropComment: (line) ->
@@ -239,7 +255,6 @@ module.exports =
       else
         configPath.push ['<type>', type]...
 
-    console.log configPath
     configPath
 
   findApp: (filePath) ->
