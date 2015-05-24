@@ -126,11 +126,16 @@ module.exports =
               break
 
         if match
-          completion = (if configPath.length > 0 then './' else '') +
-                       suggestion[configPath.length]
+          completion = suggestion[configPath.length]
+          completion = './' + completion if configPath.length > 0
 
           # add to suggestions if it is a new suggestion
-          if completion not in completions
+          if completion == './*'
+            completions.push {
+              displayText: './*'
+              snippet: './${1:name}'
+            }
+          else
             completions.push {text: completion}
 
     # complete for type parameter
@@ -161,14 +166,16 @@ module.exports =
       return null if configPath.length == 0
 
       # TODO merge this with the type unspecific parameters!!!
+      # TODO respect default type parameters
       # find yaml node that matches the current config path best
       node = @matchYAMLNode root, configPath, w
       if node?
         # iterate over parameters and add to suggestions
         for param in node.parameters or []
+          console.log param
           completions.push {
             displayText: param.name
-            text: param.name + ' = '
+            snippet: param.name + ' = ${1:' + (param.default or '')  + '}'
             description: param.description
             type: 'property'
           }
