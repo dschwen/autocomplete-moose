@@ -79,16 +79,20 @@ module.exports =
 
       # match found
       if match
-        matchList.push {fuzz: fuzz, node: node}
+        matchList.push {
+          fuzz: fuzz
+          node: node
+        }
 
     # recurse deeper otherwise
     else
       @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
 
-  matchYAMLNode: (node, configPath, w) ->
+  matchYAMLNode: (configPath, w) ->
     # we need to match this to one node in the yaml tree. multiple matches may occur
     # we will later select the most specific match
     matchList = []
+
     for root in w.yaml
       @recurseYAMLNode root, configPath, matchList
 
@@ -109,7 +113,7 @@ module.exports =
     # for empty [] we suggest blocks
     if @isOpenBracketPair(editor, bufferPosition)
       # ignore type (for the syntax)
-      configPath = @getCurrentConfigPath(editor, bufferPosition, false)
+      {configPath} = @getCurrentConfigPath(editor, bufferPosition)
 
       # go over all entries in the syntax file to find a match
       for suggestionText in w.syntax
@@ -141,7 +145,7 @@ module.exports =
     # complete for type parameter
     else if @isTypeParameter(editor, bufferPosition)
       # ignore type (for the syntax)
-      configPath = @getCurrentConfigPath(editor, bufferPosition, false)
+      {configPath} = @getCurrentConfigPath(editor, bufferPosition)
 
       # transform into a '<type>' pseudo path
       if configPath.length > 1
@@ -150,7 +154,7 @@ module.exports =
         configPath.push '<type>'
 
       # find yaml node that matches the current config path best
-      node = @matchYAMLNode root, configPath, w
+      node = @matchYAMLNode configPath, w
       if node?
         # iterate over subblocks and add final yaml path element to suggestions
         for subNode in node.subblocks or []
@@ -160,25 +164,32 @@ module.exports =
     # suggest parameters
     else if @isOtherParameter(editor, bufferPosition)
       # get the type pseudo path (for the yaml)
-      configPath = @getCurrentConfigPath(editor, bufferPosition, true)
+      {configPath, explicitType} = @getCurrentConfigPath(editor, bufferPosition)
 
       # parameters cannot exist outside of top level blocks
       return null if configPath.length == 0
 
-      # TODO merge this with the type unspecific parameters!!!
-      # TODO respect default type parameters
       # find yaml node that matches the current config path best
-      node = @matchYAMLNode root, configPath, w
-      if node?
-        # iterate over parameters and add to suggestions
-        for param in node.parameters or []
-          console.log param
-          completions.push {
-            displayText: param.name
-            snippet: param.name + ' = ${1:' + (param.default or '')  + '}'
-            description: param.description
-            type: 'property'
-          }
+      bareNode = @matchYAMLNode configPath, w
+      searchNodes = [bareNode]
+
+      # add typed node if either explicitly set in input or if a default is known
+      if not explicitType?
+        for param in bareNode.parameters or []
+          explicitType = param.default if param.name == 'type'
+      if explicitType?
+        searchNodes.push @matchYAMLNode @getTypedPath(configPath, explicitType), w
+
+      for node in searchNodes
+        if node?
+          # iterate over parameters and add to suggestions
+          for param in node.parameters or []
+            completions.push {
+              displayText: param.name
+              snippet: param.name + ' = ${1:' + (param.default or '')  + '}'
+              description: param.description
+              type: 'property'
+            }
 
     completions
 
@@ -218,6 +229,16 @@ module.exports =
       line = line.substr(cpos)
     line
 
+  # add the /Type (or /<type>/Type for top level blocks) pseudo path if we are inside a typed block
+  getTypedPath: (configPath, type) ->
+    if type?
+      if configPath.length > 1
+        configPath[configPath.length-1] = type
+      else
+        configPath.push ['<type>', type]...
+
+    configPath
+
   # determine the active input file path at the current position
   getCurrentConfigPath: (editor, position, addTypePath) ->
     row = position.row
@@ -239,7 +260,7 @@ module.exports =
           level -= 1
 
       if blockCloseTop.test(line)
-        return []
+        return {configPath: []}
 
       if blockCloseOneLevel.test(line)
         level += 1
@@ -252,17 +273,10 @@ module.exports =
       # decrement row and fetch line (if we have not found a path we assume we are at the top level)
       row -= 1
       if row < 0
-        return []
+        return {configPath: []}
       line = editor.lineTextForBufferRow(row)
 
-    # add the /Type (or /<type>/Type for top level blocks) pseudo path if we are inside a typed block
-    if type? and addTypePath
-      if configPath.length > 1
-        configPath[configPath.length-1] = type
-      else
-        configPath.push ['<type>', type]...
-
-    configPath
+    {configPath: configPath, explicitType: type}
 
   findApp: (filePath) ->
     if not filePath?
@@ -320,22 +334,5 @@ module.exports =
       delete w.promise
       w.syntax = result[0]
       w.yaml   = result[1]
-      w.defaultType = {}
-
-      # build default type table
-      recurseDefaultTypes = (node) ->
-        # loop over parameters
-        for param in node.parameters or []
-          if param.name == 'type' and param.default?
-            w.defaultType[node.name] = param.default
-
-        # loop over subblocks
-        for subblock in node.subblocks or []
-          recurseDefaultTypes subblock
-
-      for node in w.yaml
-        recurseDefaultTypes node
-
-      console.log w.defaultType
 
     w.promise = finishSyntaxSetup
