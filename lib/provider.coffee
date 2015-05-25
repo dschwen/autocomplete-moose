@@ -3,7 +3,7 @@ path = require 'path'
 pickle = require 'pickle'
 
 emptyLine = /^\s*$/
-insideBlockTag = /^\s*\[[^\]#\s]*$/
+insideBlockTag = /^\s*\[([^\]#\s]*)$/
 varParameter = /^\s*variable\s*=\s*(#.*|)$/ # TODO parse variables
 typeParameter = /^\s*type\s*=\s*[^\s#]*(#.*|)$/
 otherParameter = /^\s*[^\s#=]*(#.*|)$/

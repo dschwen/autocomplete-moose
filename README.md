@@ -6,9 +6,11 @@ installing this package.
 
 ## Block names
 Block names are suggested when the autocompletion is triggered with the cursor inside a ```[]``` pair of square brackets.
+![Block name completion](http://i.imgur.com/wGxI8t7.gif)
 
 ## Parameter names
 Parameter names are suggested when the autocompletion is triggered within a block on an empty line.
+![Parameter name completion](http://i.imgur.com/9IwJuqt.gif)
 
 ## Parameter values
 Parameter values are suggested (MooseEnums) if the cursor is behind an ```=``` equal sign that is preceeded by a valid parameter name for the current bock.
