@@ -60,30 +60,30 @@ module.exports =
         @computeCompletion request, syntaxWarehouse[dir.appPath]
 
   recurseYAMLNode: (node, configPath, matchList) ->
-      yamlPath = node.name.substr(1).split '/'
+    yamlPath = node.name.substr(1).split '/'
 
-      # no point in recursing deeper
-      return if yamlPath.length > configPath.length
+    # no point in recursing deeper
+    return if yamlPath.length > configPath.length
 
-      # compare paths if we are at the correct level
-      if yamlPath.length == configPath.length
-        fuzz = 0
-        match = true
-        # TODO compare with specificity depending on '*'
-        for configPathElement, index in configPath
-          if yamlPath[index] == '*'
-            fuzz++
-          else if yamlPath[index] != configPathElement
-            match = false
-            break
+    # compare paths if we are at the correct level
+    if yamlPath.length == configPath.length
+      fuzz = 0
+      match = true
+      # TODO compare with specificity depending on '*'
+      for configPathElement, index in configPath
+        if yamlPath[index] == '*'
+          fuzz++
+        else if yamlPath[index] != configPathElement
+          match = false
+          break
 
-        # match found
-        if match
-          matchList.push {fuzz: fuzz, node: node}
+      # match found
+      if match
+        matchList.push {fuzz: fuzz, node: node}
 
-      # recurse deeper otherwise
-      else
-        @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
+    # recurse deeper otherwise
+    else
+      @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
 
   matchYAMLNode: (node, configPath, w) ->
     # we need to match this to one node in the yaml tree. multiple matches may occur
@@ -320,5 +320,22 @@ module.exports =
       delete w.promise
       w.syntax = result[0]
       w.yaml   = result[1]
+      w.defaultType = {}
+
+      # build default type table
+      recurseDefaultTypes = (node) ->
+        # loop over parameters
+        for param in node.parameters or []
+          if param.name == 'type' and param.default?
+            w.defaultType[node.name] = param.default
+
+        # loop over subblocks
+        for subblock in node.subblocks or []
+          recurseDefaultTypes subblock
+
+      for node in w.yaml
+        recurseDefaultTypes node
+
+      console.log w.defaultType
 
     w.promise = finishSyntaxSetup
