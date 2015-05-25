@@ -202,14 +202,18 @@ module.exports =
   triggerAutocomplete: (editor) ->
     atom.commands.dispatch(atom.views.getView(editor), 'autocomplete-plus:activate', {activatedManually: false})
 
+  # current line up to the cursor position
+  lineToCursor: (editor, position) ->
+    line = editor.lineTextForBufferRow position.row
+    line.substr 0, position.column
+
   # check if the current line is empty (in that case we complete for parameter names or block names)
   isLineEmpty: (editor, position) ->
     emptyLine.test(editor.lineTextForBufferRow(position.row))
 
   # check if there is an square bracket pair around the cursor
   isOpenBracketPair: (editor, position) ->
-    line = editor.lineTextForBufferRow position.row
-    return insideBlockTag.test line.substr 0, position.column
+    return insideBlockTag.test @lineToCursor editor, position
 
   # TODO check if we are after the equal sign in a parameter line
   isParameterDeclartion: (editor, position) ->
