@@ -3,6 +3,7 @@ path = require 'path'
 pickle = require 'pickle'
 
 emptyLine = /^\s*$/
+insideBlockTag = /^\s*\[[^\]#\s]*$/
 varParameter = /^\s*variable\s*=\s*(#.*|)$/ # TODO parse variables
 typeParameter = /^\s*type\s*=\s*[^\s#]*(#.*|)$/
 otherParameter = /^\s*[^\s#=]*(#.*|)$/
@@ -140,7 +141,9 @@ module.exports =
               snippet: './${1:name}'
             }
           else
-            completions.push {text: completion}
+            completions.push {text: completion} unless completion == ''
+
+      console.log 'block completion', completions
 
     # complete for type parameter
     else if @isTypeParameter(editor, bufferPosition)
@@ -205,10 +208,8 @@ module.exports =
 
   # check if there is an square bracket pair around the cursor
   isOpenBracketPair: (editor, position) ->
-    if position.column < 1
-      return false
     line = editor.lineTextForBufferRow position.row
-    return line.substr(position.column-1, 2) == '[]'
+    return insideBlockTag.test line.substr 0, position.column
 
   # TODO check if we are after the equal sign in a parameter line
   isParameterDeclartion: (editor, position) ->
