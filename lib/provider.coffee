@@ -4,9 +4,12 @@ pickle = require 'pickle'
 
 emptyLine = /^\s*$/
 insideBlockTag = /^\s*\[([^\]#\s]*)$/
-varParameter = /^\s*variable\s*=\s*(#.*|)$/ # TODO parse variables
-typeParameter = /^\s*type\s*=\s*[^\s#]*(#.*|)$/
-otherParameter = /^\s*[^\s#=\]]*(#.*|)$/
+
+parameterCompletion = /^\s*[^\s#=\]]*$/
+
+variableParameter = /^\s*variable\s*=\s*$/ # TODO parse variables
+typeParameter = /^\s*type\s*=\s*$/
+otherParameter = /^\s*([^\s#=\]]+)\s*=\s*[^\s#=\]]*$/
 
 blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
@@ -105,20 +108,61 @@ module.exports =
       a.fuzz > b.fuzz
     return matchList[0].node
 
-  # build the suggestion list
+  # fetch a list of valis parameters for the current config path
+  fetchParameterList: (configPath, explicitType, w) ->
+    # parameters cannot exist outside of top level blocks
+    return [] if configPath.length == 0
+
+    paramList = []
+
+    # find yaml node that matches the current config path best
+    bareNode = @matchYAMLNode configPath, w
+    searchNodes = [bareNode]
+
+    # add typed node if either explicitly set in input or if a default is known
+    if not explicitType?
+      for param in bareNode.parameters or []
+        explicitType = param.default if param.name == 'type'
+    if explicitType?
+      searchNodes.push @matchYAMLNode @getTypedPath(configPath, explicitType), w
+
+    for node in searchNodes
+      if node?
+        paramList.push node.parameters...
+
+    console.log paramList
+    paramList
+
+  # build the suggestion list for parameter values
+  computeValueCompletion: (param) ->
+    completions = []
+
+    if param.cpp_type == 'bool'
+      completions = [
+        {text: 'true'}
+        {text: 'false'}
+      ]
+    else if param.cpp_type == 'MooseEnum'
+      for option in param.options.split ' '
+        completions.push {
+          text: option
+        }
+
+    completions
+
   # w contains the syntax applicable to the current file
   computeCompletion: (request, w) ->
     {editor,bufferPosition} = request
     completions = []
     line = @lineToCursor editor, bufferPosition
 
+    # get the type pseudo path (for the yaml)
+    {configPath, explicitType} = @getCurrentConfigPath(editor, bufferPosition)
+
     # for empty [] we suggest blocks
     if @isOpenBracketPair(line)
       # get the true replacementPrefix (autocomplete does not see the "./")
       givenPrefix = insideBlockTag.exec(line)[1]
-
-      # ignore type (for the syntax)
-      {configPath} = @getCurrentConfigPath(editor, bufferPosition)
 
       # go over all entries in the syntax file to find a match
       for suggestionText in w.syntax
@@ -154,13 +198,25 @@ module.exports =
           else
             completions.push {text: prefix + completion} unless completion == ''
 
-      console.log 'block completion', completions
+    # suggest parameters
+    else if @isParameterCompletion(line)
+      # loop over valid parameters
+      for param in @fetchParameterList configPath, explicitType, w
+        defaultValue = param.default or ''
+
+        if param.cpp_type == 'bool'
+          defaultValue = 'false' if defaultValue == '0'
+          defaultValue = 'true'  if defaultValue == '1'
+
+        completions.push {
+          displayText: param.name
+          snippet: param.name + ' = ${1:' + defaultValue  + '}'
+          description: param.description
+          type: 'property'
+        }
 
     # complete for type parameter
-    else if @isTypeParameter(editor, bufferPosition)
-      # ignore type (for the syntax)
-      {configPath} = @getCurrentConfigPath(editor, bufferPosition)
-
+    else if @isTypeParameter(line)
       # transform into a '<type>' pseudo path
       if configPath.length > 1
         configPath.pop()
@@ -175,35 +231,17 @@ module.exports =
           completion = (subNode.name.split '/')[-1..][0]
           completions.push {text: completion}
 
-    # suggest parameters
-    else if @isOtherParameter(editor, bufferPosition)
-      # get the type pseudo path (for the yaml)
-      {configPath, explicitType} = @getCurrentConfigPath(editor, bufferPosition)
+    # complete for variable parameter
+    else if @isVariableParameter(line)
+      console.log 'TODO: variable name cpompletion'
 
-      # parameters cannot exist outside of top level blocks
-      return null if configPath.length == 0
-
-      # find yaml node that matches the current config path best
-      bareNode = @matchYAMLNode configPath, w
-      searchNodes = [bareNode]
-
-      # add typed node if either explicitly set in input or if a default is known
-      if not explicitType?
-        for param in bareNode.parameters or []
-          explicitType = param.default if param.name == 'type'
-      if explicitType?
-        searchNodes.push @matchYAMLNode @getTypedPath(configPath, explicitType), w
-
-      for node in searchNodes
-        if node?
-          # iterate over parameters and add to suggestions
-          for param in node.parameters or []
-            completions.push {
-              displayText: param.name
-              snippet: param.name + ' = ${1:' + (param.default or '')  + '}'
-              description: param.description
-              type: 'property'
-            }
+    # complete for other parameter values
+    else if @isOtherParameter(line)
+      paramName = otherParameter.exec(line)[1]
+      for param in @fetchParameterList configPath, explicitType, w
+        if param.name == paramName
+          completions = @computeValueCompletion param
+          break
 
     completions
 
@@ -226,17 +264,21 @@ module.exports =
   isOpenBracketPair: (line) ->
     return insideBlockTag.test line
 
+  # check if the current line is a type parameter
+  isTypeParameter: (line) ->
+    typeParameter.test line
+
+  # check if the current line is a type parameter
+  isVariableParameter: (line) ->
+    variableParameter.test line
+
   # TODO check if we are after the equal sign in a parameter line
-  isParameterDeclartion: (editor, position) ->
-    return false
+  isOtherParameter: (line) ->
+    otherParameter.test line
 
   # check if the current line is a type parameter
-  isTypeParameter: (editor, position) ->
-    typeParameter.test(editor.lineTextForBufferRow(position.row))
-
-  # check if the current line is a type parameter
-  isOtherParameter: (editor, position) ->
-    otherParameter.test(editor.lineTextForBufferRow(position.row))
+  isParameterCompletion: (line) ->
+    parameterCompletion.test line
 
   # drop all comments from a given input file line
   dropComment: (line) ->
