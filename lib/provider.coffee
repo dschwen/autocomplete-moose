@@ -6,7 +6,7 @@ emptyLine = /^\s*$/
 insideBlockTag = /^\s*\[([^\]#\s]*)$/
 varParameter = /^\s*variable\s*=\s*(#.*|)$/ # TODO parse variables
 typeParameter = /^\s*type\s*=\s*[^\s#]*(#.*|)$/
-otherParameter = /^\s*[^\s#=]*(#.*|)$/
+otherParameter = /^\s*[^\s#=\]]*(#.*|)$/
 
 blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
@@ -110,9 +110,13 @@ module.exports =
   computeCompletion: (request, w) ->
     {editor,bufferPosition} = request
     completions = []
+    line = @lineToCursor editor, bufferPosition
 
     # for empty [] we suggest blocks
-    if @isOpenBracketPair(editor, bufferPosition)
+    if @isOpenBracketPair(line)
+      # get the true replacementPrefix (autocomplete does not see the "./")
+      givenPrefix = insideBlockTag.exec(line)[1]
+
       # ignore type (for the syntax)
       {configPath} = @getCurrentConfigPath(editor, bufferPosition)
 
@@ -132,16 +136,23 @@ module.exports =
 
         if match
           completion = suggestion[configPath.length]
-          completion = './' + completion if configPath.length > 0
+
+          # handle the prefix correctly
+          prefix = ''
+          if configPath.length > 0
+            if givenPrefix.substr(0, 1) != '.'
+              prefix = './'
+            else if givenPrefix.substr(0, 2) != './'
+              prefix = '/'
 
           # add to suggestions if it is a new suggestion
-          if completion == './*'
+          if completion == '*'
             completions.push {
-              displayText: './*'
-              snippet: './${1:name}'
+              displayText: prefix + '*'
+              snippet: prefix + '${1:name}'
             }
           else
-            completions.push {text: completion} unless completion == ''
+            completions.push {text: prefix + completion} unless completion == ''
 
       console.log 'block completion', completions
 
@@ -212,8 +223,8 @@ module.exports =
     emptyLine.test(editor.lineTextForBufferRow(position.row))
 
   # check if there is an square bracket pair around the cursor
-  isOpenBracketPair: (editor, position) ->
-    return insideBlockTag.test @lineToCursor editor, position
+  isOpenBracketPair: (line) ->
+    return insideBlockTag.test line
 
   # TODO check if we are after the equal sign in a parameter line
   isParameterDeclartion: (editor, position) ->
