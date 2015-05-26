@@ -75,19 +75,25 @@ module.exports =
     if yamlPath.length == configPath.length
       fuzz = 0
       match = true
+      fuzzyOnLast = false
+
       # TODO compare with specificity depending on '*'
       for configPathElement, index in configPath
         if yamlPath[index] == '*'
           fuzz++
+          fuzzyOnLast = true
         else if yamlPath[index] != configPathElement
           match = false
           break
+        else
+          fuzzyOnLast = false
 
       # match found
       if match
         matchList.push {
           fuzz: fuzz
           node: node
+          fuzzyOnLast: fuzzyOnLast
         }
 
     # recurse deeper otherwise
@@ -132,7 +138,6 @@ module.exports =
       if node?
         paramList.push node.parameters...
 
-    console.log paramList
     paramList
 
   # parse current file to build a list of variables
@@ -144,7 +149,6 @@ module.exports =
 
     # find start of var block
     i++ while i < nlines and editor.lineTextForBufferRow(i).indexOf('[' + blockName + ']') == -1
-    console.log i, editor.lineTextForBufferRow(i)
 
     # parse contents of variable block
     loop
@@ -266,13 +270,16 @@ module.exports =
     # complete for type parameter
     else if @isTypeParameter(line)
       # transform into a '<type>' pseudo path
+      console.log configPath
       if configPath.length > 1
         configPath.pop()
       else
         configPath.push '<type>'
+      console.log configPath
 
       # find yaml node that matches the current config path best
       node = @matchYAMLNode configPath, w
+      console.log node
       if node?
         # iterate over subblocks and add final yaml path element to suggestions
         for subNode in node.subblocks or []
@@ -407,7 +414,7 @@ module.exports =
       for file in fs.readdirSync(searchPath)
         match = syntaxFile.exec(file)
         if match and fs.existsSync(path.join searchPath, 'yaml'+match[2]) and fs.existsSync(path.join searchPath, 'syntax'+match[2])
-          console.log 'found app: ', searchPath, match[2]
+          # console.log 'found app: ', searchPath, match[2]
           appDirs[filePath] = {appPath: searchPath, appSuffix: match[2]}
           return appDirs[filePath]
 
