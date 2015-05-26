@@ -136,7 +136,7 @@ module.exports =
       if not result?
         return []
       else
-        searchNodes.push result.node
+        searchNodes.unshift result.node
 
     for node in searchNodes
       if node?
@@ -300,8 +300,13 @@ module.exports =
 
     # suggest parameters
     else if @isParameterCompletion(line)
+      paramNamesFound = []
+
       # loop over valid parameters
       for param in @fetchParameterList configPath, explicitType, w
+        continue if param.name in paramNamesFound
+        paramNamesFound.push param.name
+
         defaultValue = param.default or ''
 
         if param.cpp_type == 'bool'
@@ -312,7 +317,13 @@ module.exports =
           displayText: param.name
           snippet: param.name + ' = ${1:' + defaultValue  + '}'
           description: param.description
-          type: 'property'
+          type:
+            if param.name == 'type'
+              'type'
+            else if param.required
+              'require'
+            else
+              'property'
         }
 
     # complete for other parameter values
