@@ -7,8 +7,7 @@ insideBlockTag = /^\s*\[([^\]#\s]*)$/
 
 parameterCompletion = /^\s*[^\s#=\]]*$/
 
-variableParameter = /^\s*variable\s*=\s*$/ # TODO parse variables
-typeParameter = /^\s*type\s*=\s*$/
+typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/
 otherParameter = /^\s*([^\s#=\]]+)\s*=\s*[^\s#=\]]*$/
 
 blockOpenTop = /\[([^.\/][^\/]*)\]/
@@ -16,6 +15,9 @@ blockCloseTop = /\[\]/
 blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
 blockCloseOneLevel = /\[\.\.\/\]/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
+
+varOrder = /^\s*order\s*=\s*([^\s#=\]]+)$/
+varFamily = /^\s*family\s*=\s*([^\s#=\]]+)$/
 
 syntaxFile = /^(yaml|syntax)(_dump_.*-(opt|dbg|oprof))$/
 
@@ -133,8 +135,61 @@ module.exports =
     console.log paramList
     paramList
 
-  # build the suggestion list for parameter values
-  computeValueCompletion: (param) ->
+  # parse current file to build a list of variables
+  fetchVariableList: (blockName, editor) ->
+    i = 0
+    level = 0
+    variableList = []
+    nlines = editor.getLineCount()
+
+    # find start of var block
+    i++ while i < nlines and editor.lineTextForBufferRow(i).indexOf('[' + blockName + ']') == -1
+    console.log i, editor.lineTextForBufferRow(i)
+
+    # parse contents of variable block
+    loop
+      break if i >= nlines
+      line = editor.lineTextForBufferRow i
+      break if blockCloseTop.test line
+
+      if blockOpenOneLevel.test line
+        if level == 0
+          variable = {name: blockOpenOneLevel.exec(line)[1]}
+        level++
+
+      else if blockCloseOneLevel.test(line)
+        level--
+        if level == 0
+          variableList.push variable
+
+      else if level == 1 and varFamily.test line
+        variable.family = varFamily.exec(line)[1]
+
+      else if level == 1 and varOrder.test line
+        variable.order = varOrder.exec(line)[1]
+
+      i++
+
+    variableList
+
+  # variable completions
+  computeVariableCompletion: (blockNames, editor) ->
+    completions = []
+    for block in blockNames
+      for {name, family, order} in @fetchVariableList block, editor
+        type = []
+        type.push order if order?
+        type.push family if family?
+
+        completions.push {
+          text: name
+          description: type.join ' '
+        }
+
+    completions
+
+  # build the suggestion list for parameter values (editor is passed in to build the variable list)
+  computeValueCompletion: (param, editor) ->
     completions = []
 
     if param.cpp_type == 'bool'
@@ -142,11 +197,21 @@ module.exports =
         {text: 'true'}
         {text: 'false'}
       ]
+
     else if param.cpp_type == 'MooseEnum'
       for option in param.options.split ' '
         completions.push {
           text: option
         }
+
+    else if param.cpp_type == 'NonlinearVariableName'
+      completions = @computeVariableCompletion ['Variables'], editor
+
+    else if param.cpp_type == 'AuxVariableName'
+      completions = @computeVariableCompletion ['AuxVariables'], editor
+
+    else if param.cpp_type == 'std::vector<VariableName>' or param.cpp_type == 'VariableName'
+      completions = @computeVariableCompletion ['Variables', 'AuxVariables'], editor
 
     completions
 
@@ -198,6 +263,22 @@ module.exports =
           else
             completions.push {text: prefix + completion} unless completion == ''
 
+    # complete for type parameter
+    else if @isTypeParameter(line)
+      # transform into a '<type>' pseudo path
+      if configPath.length > 1
+        configPath.pop()
+      else
+        configPath.push '<type>'
+
+      # find yaml node that matches the current config path best
+      node = @matchYAMLNode configPath, w
+      if node?
+        # iterate over subblocks and add final yaml path element to suggestions
+        for subNode in node.subblocks or []
+          completion = (subNode.name.split '/')[-1..][0]
+          completions.push {text: completion}
+
     # suggest parameters
     else if @isParameterCompletion(line)
       # loop over valid parameters
@@ -215,32 +296,12 @@ module.exports =
           type: 'property'
         }
 
-    # complete for type parameter
-    else if @isTypeParameter(line)
-      # transform into a '<type>' pseudo path
-      if configPath.length > 1
-        configPath.pop()
-      else
-        configPath.push '<type>'
-
-      # find yaml node that matches the current config path best
-      node = @matchYAMLNode configPath, w
-      if node?
-        # iterate over subblocks and add final yaml path element to suggestions
-        for subNode in node.subblocks or []
-          completion = (subNode.name.split '/')[-1..][0]
-          completions.push {text: completion}
-
-    # complete for variable parameter
-    else if @isVariableParameter(line)
-      console.log 'TODO: variable name cpompletion'
-
     # complete for other parameter values
     else if @isOtherParameter(line)
       paramName = otherParameter.exec(line)[1]
       for param in @fetchParameterList configPath, explicitType, w
         if param.name == paramName
-          completions = @computeValueCompletion param
+          completions = @computeValueCompletion param, editor
           break
 
     completions
@@ -267,10 +328,6 @@ module.exports =
   # check if the current line is a type parameter
   isTypeParameter: (line) ->
     typeParameter.test line
-
-  # check if the current line is a type parameter
-  isVariableParameter: (line) ->
-    variableParameter.test line
 
   # TODO check if we are after the equal sign in a parameter line
   isOtherParameter: (line) ->

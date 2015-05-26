@@ -15,7 +15,14 @@ Parameter names are suggested when the autocompletion is triggered within a bloc
 ![Parameter name completion](http://i.imgur.com/9IwJuqt.gif)
 
 ## Parameter values
-Parameter values are suggested (MooseEnums) if the cursor is behind an ```=``` equal sign that is preceeded by a valid parameter name for the current bock.
+Parameter values are suggested (MooseEnums, bools) if the cursor is behind an ```=``` equal sign that is preceeded by a valid parameter name for the current bock.
+
+![Parameter value completion](http://i.imgur.com/VNztT7O.gif)
+
+### Variable completion
+Parameters taking variable names (Aux or Non-linear) get a list of currently defined variable names.
+
+![Variable name completion](http://i.imgur.com/U7MrRBs.gif)
 
 ### Type parameter completion
 Valid block types are suggested. Further parameter suggestions in the current block depend on the choice of the bock type.
