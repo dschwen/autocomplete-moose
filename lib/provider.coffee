@@ -109,30 +109,34 @@ module.exports =
       @recurseYAMLNode root, configPath, matchList
 
     # no match found
-    return null if matchList.length == 0
+    return {node: null, fuzzyOnLast: null} if matchList.length == 0
 
     # sort least fuzz first and return minimum fuzz match
     matchList.sort (a, b) ->
       a.fuzz > b.fuzz
-    return matchList[0].node
+    return matchList[0]
 
   # fetch a list of valis parameters for the current config path
   fetchParameterList: (configPath, explicitType, w) ->
     # parameters cannot exist outside of top level blocks
     return [] if configPath.length == 0
-
     paramList = []
 
     # find yaml node that matches the current config path best
-    bareNode = @matchYAMLNode configPath, w
-    searchNodes = [bareNode]
+    {node, fuzzyOnLast} = @matchYAMLNode configPath, w
+    searchNodes = [node]
 
     # add typed node if either explicitly set in input or if a default is known
     if not explicitType?
-      for param in bareNode.parameters or []
+      for param in node.parameters or []
         explicitType = param.default if param.name == 'type'
+
     if explicitType?
-      searchNodes.push @matchYAMLNode @getTypedPath(configPath, explicitType), w
+      result = @matchYAMLNode @getTypedPath(configPath, explicitType, fuzzyOnLast), w
+      if not result?
+        return []
+      else
+        searchNodes.push result.node
 
     for node in searchNodes
       if node?
@@ -270,21 +274,29 @@ module.exports =
     # complete for type parameter
     else if @isTypeParameter(line)
       # transform into a '<type>' pseudo path
-      console.log configPath
-      if configPath.length > 1
+      originalConfigPath = configPath[..]
+
+      # find yaml node that matches the current config path best
+      {node, fuzzyOnLast}  = @matchYAMLNode configPath, w
+      if fuzzyOnLast
         configPath.pop()
       else
         configPath.push '<type>'
-      console.log configPath
 
       # find yaml node that matches the current config path best
-      node = @matchYAMLNode configPath, w
-      console.log node
+      {node, fuzzyOnLast}  = @matchYAMLNode configPath, w
       if node?
         # iterate over subblocks and add final yaml path element to suggestions
         for subNode in node.subblocks or []
           completion = (subNode.name.split '/')[-1..][0]
           completions.push {text: completion}
+      else
+        # special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
+        paramName = otherParameter.exec(line)[1]
+        for param in @fetchParameterList originalConfigPath, explicitType, w
+          if param.name == paramName
+            completions = @computeValueCompletion param, editor
+            break
 
     # suggest parameters
     else if @isParameterCompletion(line)
@@ -352,14 +364,19 @@ module.exports =
     line
 
   # add the /Type (or /<type>/Type for top level blocks) pseudo path if we are inside a typed block
-  getTypedPath: (configPath, type) ->
-    if type?
-      if configPath.length > 1
-        configPath[configPath.length-1] = type
-      else
-        configPath.push ['<type>', type]...
+  getTypedPath: (configPath, type, fuzzyOnLast) ->
+    typedConfigPath = configPath[..]
 
-    configPath
+    if type? and type != ''
+      #if configPath.length > 1
+      if fuzzyOnLast
+        typedConfigPath[configPath.length-1] = type
+      else
+        typedConfigPath.push ['<type>', type]...
+      #else
+      #  typedConfigPath.push type
+
+    typedConfigPath
 
   # determine the active input file path at the current position
   getCurrentConfigPath: (editor, position, addTypePath) ->
@@ -368,6 +385,7 @@ module.exports =
     configPath = []
     type = null
     level = 0
+    depth = 0
 
     loop
       # test the current line for block markers
@@ -376,19 +394,21 @@ module.exports =
         break
 
       if blockOpenOneLevel.test(line)
+        depth--
         if level == 0
           configPath.unshift(blockOpenOneLevel.exec(line)[1])
         else
-          level -= 1
+          level--
 
       if blockCloseTop.test(line)
         return {configPath: []}
 
       if blockCloseOneLevel.test(line)
-        level += 1
+        depth++
+        level++
 
       # test for a type parameter
-      if blockType.test(line) and level == 0 and type == null
+      if blockType.test(line) and level == 0 and depth == 0 and type == null
         type = blockType.exec(line)[1]
 
 
