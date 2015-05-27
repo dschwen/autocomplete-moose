@@ -9,7 +9,7 @@
     "atom": ">=0.174.0 <2.0.0"
   },
   "dependencies": {
-    "pickle": "^0.2.0"
+    "js-yaml": ">=3.0.0"
   },
   "providedServices": {
     "autocomplete.provider": {

@@ -1,6 +1,8 @@
 fs = require 'fs'
+cp = require 'child_process'
 path = require 'path'
-pickle = require 'pickle'
+yaml = require 'js-yaml'
+readline = require 'readline'
 
 emptyLine = /^\s*$/
 insideBlockTag = /^\s*\[([^\]#\s]*)$/
@@ -19,7 +21,7 @@ blockType = /^\s*type\s*=\s*([^#\s]+)/
 varOrder = /^\s*order\s*=\s*([^\s#=\]]+)$/
 varFamily = /^\s*family\s*=\s*([^\s#=\]]+)$/
 
-syntaxFile = /^(yaml|syntax)(_dump_.*-(opt|dbg|oprof))$/
+mooseApp = /^(.*)-(opt|dbg|oprof)$/
 
 # each moose input file in the project dir could have its own moose app and yaml/syntax associated
 # this table points to the app dir for each editor path
@@ -440,13 +442,26 @@ module.exports =
       return appDirs[filePath]
 
     searchPath = filePath
+    matches = []
     loop
       # list all files
       for file in fs.readdirSync(searchPath)
-        match = syntaxFile.exec(file)
-        if match and fs.existsSync(path.join searchPath, 'yaml'+match[2]) and fs.existsSync(path.join searchPath, 'syntax'+match[2])
-          # console.log 'found app: ', searchPath, match[2]
-          appDirs[filePath] = {appPath: searchPath, appSuffix: match[2]}
+        match = mooseApp.exec(file)
+        if match and fs.isExecutableSync(file)
+          console.log 'found app candidate: ', searchPath, match[1], file
+          matches.push {
+            appPath: searchPath
+            appName: match[1]
+            appFile: file
+            appDate: fs.statSync(file).mtime.getTime()
+          }
+
+        if matches.length > 0
+          # return newest application
+          matches.sort (a, b) ->
+            a.appDate < b.appDate
+
+          appDirs[filePath] = matches[0]
           return appDirs[filePath]
 
       # go to parent
@@ -454,33 +469,62 @@ module.exports =
       searchPath = path.join searchPath, '..'
 
       if searchPath is previous_path
-        atom.notifications.addError 'No MOOSE syntax file found. Use peacock to generate.', dismissable: true
+        atom.notifications.addError 'No MOOSE application executable found.', dismissable: true
         return null
 
   # unpickle the peacock YAML and syntax files
   loadSyntax: (app) ->
-    {appPath, appSuffix} = app
+    {appPath, appName, appFile, appDate} = app
 
-    # prepare entry in the syntax warehouse TODO only insert if both components are loaded, otherwise insert promise
+    # we store syntax data here:
+    cacheDir = path.join __dirname, '..', 'cache'
+    fs.makeTreeSync cacheDir
+    cacheFile = path.join cacheDir, "#{appName}.json"
+
+    # prepare entry in the syntax warehouse
     w = syntaxWarehouse[appPath] = {}
 
-    # load syntax file for valid block hierarchy
-    syntaxPromise = new Promise (resolve, reject) ->
-      fs.readFile path.join(appPath, "syntax#{appSuffix}"), 'utf8', (error, content) ->
-        reject() if errror?
-        resolve content.split('\n')
+    # see if the cache file exists
+    if fs.existsSync cacheFile
+      cacheDate = fs.statSync(file).mtime.getTime()
 
-    # load yaml file containing parameters and descriptions
-    yamlPromise = new Promise (resolve, reject) ->
-      fs.readFile path.join(appPath, "yaml#{appSuffix}"), (error, pickledata) ->
-        reject if error?
-        pickle.loads (pickledata), (jsondata) ->
-          resolve jsondata
+      # if the cacheFile is newer than the app compile date we use the cache
+      if cacheDate < appDate
 
-    # promise that is fulfilled when all files are loaded
+        # return chained promises to load and parse the cached syntax
+        return new Promise (resolve, reject) ->
+          fs.readFile path.join(appPath, "syntax#{appSuffix}"), 'utf8', (error, content) ->
+            reject() if errror?
+            resolve JSON.parse content
+
+        .then (result) ->
+          w = result
+
+        .catch ->
+          # TODO: rebuild syntax if loading the cahce fails
+          atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
+
+    # rebuild the syntax by running moose with --syntax and --yaml
+    mooseYAML = new Promise (resolve, reject) ->
+      cp.execFile appFile, ['--yaml'], (error, stdout, stderr) ->
+        reject() if error?
+
+    mooseSyntax = new Promise (resolve, reject) ->
+      cp.execFile appFile, ['--syntax'], (error, stdout, stderr) ->
+        reject() if error?
+
+        lines = stdout.toString().split('\n')
+        begin = lines.indexOf '**START SYNTAX DATA**'
+        end = lines.indexOf '**END SYNTAX DATA**'
+
+        reject() if begin < 0 or end <= begin
+        
+        resolve lines[begin+1..end-1]
+
+    # promise that is fulfilled when all processes are done
     loadFiles = Promise.all [
-      syntaxPromise
-      yamlPromise
+      mooseSyntax
+      mooseYAML
     ]
 
     finishSyntaxSetup = loadFiles.then (result) ->
