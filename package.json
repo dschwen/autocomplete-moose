@@ -9,7 +9,8 @@
     "atom": ">=0.174.0 <2.0.0"
   },
   "dependencies": {
-    "js-yaml": ">=3.0.0"
+    "js-yaml": ">=3.0.0",
+    "fs-plus": "^2.0.4"
   },
   "providedServices": {
     "autocomplete.provider": {

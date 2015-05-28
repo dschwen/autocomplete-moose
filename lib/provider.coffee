@@ -1,4 +1,4 @@
-fs = require 'fs'
+fs = require 'fs-plus'
 cp = require 'child_process'
 path = require 'path'
 yaml = require 'js-yaml'
@@ -47,6 +47,7 @@ module.exports =
 
     # lookup application for current input file (cached)
     dir = @findApp filePath
+    return [] if not dir?
 
     # check if the syntax is already loaded, currently loading, or not requested yet
     if dir.appPath of syntaxWarehouse
@@ -444,16 +445,19 @@ module.exports =
     searchPath = filePath
     matches = []
     loop
+      console.log searchPath
+
       # list all files
       for file in fs.readdirSync(searchPath)
         match = mooseApp.exec(file)
-        if match and fs.isExecutableSync(file)
-          console.log 'found app candidate: ', searchPath, match[1], file
+        if match #and fs.isExecutableSync(file)
+          console.log 'found app candidate: ', searchPath, match, file
+          fileWithPath = path.join searchPath, file
           matches.push {
             appPath: searchPath
             appName: match[1]
-            appFile: file
-            appDate: fs.statSync(file).mtime.getTime()
+            appFile: fileWithPath
+            appDate: fs.statSync(fileWithPath).mtime.getTime()
           }
 
         if matches.length > 0
@@ -472,7 +476,7 @@ module.exports =
         atom.notifications.addError 'No MOOSE application executable found.', dismissable: true
         return null
 
-  # unpickle the peacock YAML and syntax files
+  # fetch YAML and syntax data
   loadSyntax: (app) ->
     {appPath, appName, appFile, appDate} = app
 
@@ -504,21 +508,44 @@ module.exports =
           # TODO: rebuild syntax if loading the cahce fails
           atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
 
+    # open notification about syntax generation
+    workingNotification = atom.notifications.addInfo 'Rebuilding MOOSE syntax data.', {dismissable: true}
+
     # rebuild the syntax by running moose with --syntax and --yaml
     mooseYAML = new Promise (resolve, reject) ->
-      cp.execFile appFile, ['--yaml'], (error, stdout, stderr) ->
-        reject() if error?
+      yamlData = ''
+
+      moose = cp.spawn appFile, ['--yaml'], {stdio:['pipe','pipe','ignore']}
+
+      moose.stdout.on 'data', (data) ->
+        yamlData += data
+
+      moose.on 'close',  (code, signal) ->
+        if code is 0
+          resolve yamlData
+        else
+          reject code
+    .then (result) ->
+      beginMarker = '**START YAML DATA**\n'
+      endMarker = '**END YAML DATA**\n'
+      begin = result.indexOf beginMarker
+      end= result.lastIndexOf endMarker
+
+      throw 'markers not found' if begin < 0 or end < begin
+
+      yaml.safeLoad result[begin+beginMarker.length..end-1]
+    .then (result) ->
+      console.log result
 
     mooseSyntax = new Promise (resolve, reject) ->
       cp.execFile appFile, ['--syntax'], (error, stdout, stderr) ->
-        reject() if error?
+        reject('syntax') if error?
 
         lines = stdout.toString().split('\n')
         begin = lines.indexOf '**START SYNTAX DATA**'
         end = lines.indexOf '**END SYNTAX DATA**'
 
-        reject() if begin < 0 or end <= begin
-        
+        reject('marker') if begin < 0 or end <= begin
         resolve lines[begin+1..end-1]
 
     # promise that is fulfilled when all processes are done
@@ -527,9 +554,17 @@ module.exports =
       mooseYAML
     ]
 
+    loadFiles.catch (error) ->
+      workingNotification.dismiss()
+      atom.notifications.addError 'Failed to build MOOSE syntax data.', dismissable: true
+
     finishSyntaxSetup = loadFiles.then (result) ->
+      workingNotification.dismiss()
       delete w.promise
       w.syntax = result[0]
       w.yaml   = result[1]
+
+
+    # TODO we return finishSyntaxSetup, but we chain a promise onto it to write out the cache file
 
     w.promise = finishSyntaxSetup
