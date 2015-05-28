@@ -24,9 +24,10 @@ varFamily = /^\s*family\s*=\s*([^\s#=\]]+)$/
 mooseApp = /^(.*)-(opt|dbg|oprof)$/
 
 suggestionIcon = {
-  required: '<i class="icon-circle highlight-error"></i>'
-  requiredDefault: '<i class="icon-dot-circle-o highlight-warning"></i>'
-  default: '<i class="icon-circle highlight-success"></i>'
+  required: '<i class="icon-primitive-square text-error"></i>'
+  requiredDefault: '<i class="icon-primitive-dot text-success"></i>'
+  default: '<i class="icon-circle text-warning"></i>'
+  type: '<i class="icon-gear keyword"></i>'
 }
 
 # each moose input file in the project dir could have its own moose app and yaml/syntax associated
@@ -324,7 +325,7 @@ module.exports =
 
         icon =
           if param.name == 'type'
-            't'
+            suggestionIcon['type']
           else if param.required
             if param.default == '' then suggestionIcon['required'] else suggestionIcon['requiredDefault']
           else if param.default != ''
