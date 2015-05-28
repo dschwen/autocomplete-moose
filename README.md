@@ -4,6 +4,10 @@ Context sensitive Atom.io autocompletion for [MOOSE Framework](http://mooseframe
 [autocomplete-plus](https://github.com/atom-community/autocomplete-plus) before
 installing this package.
 
+The _MOOSE autocomplete_ plugin will automatically call your MOOSE-based app to obtain the input file syntax data.
+The syntax is cached and will be rebuilt if your app is recompiled. The MOOSE-based app must be in or (an arbitrary
+number of parent directory levels) above the current input file.
+
 ## Block names
 Block names are suggested when the autocompletion is triggered with the cursor inside a ```[]``` pair of square brackets.
 
