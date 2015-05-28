@@ -108,6 +108,7 @@ module.exports =
     # we will later select the most specific match
     matchList = []
 
+    console.log 'w = ', w
     for root in w.yaml
       @recurseYAMLNode root, configPath, matchList
 
@@ -490,23 +491,25 @@ module.exports =
 
     # see if the cache file exists
     if fs.existsSync cacheFile
-      cacheDate = fs.statSync(file).mtime.getTime()
+      cacheDate = fs.statSync(cacheFile).mtime.getTime()
 
       # if the cacheFile is newer than the app compile date we use the cache
-      if cacheDate < appDate
-
+      if cacheDate > appDate
         # return chained promises to load and parse the cached syntax
-        return new Promise (resolve, reject) ->
-          fs.readFile path.join(appPath, "syntax#{appSuffix}"), 'utf8', (error, content) ->
-            reject() if errror?
+        loadCache = new Promise (resolve, reject) ->
+          fs.readFile cacheFile, 'utf8', (error, content) ->
+            reject() if error?
             resolve JSON.parse content
 
         .then (result) ->
+          console.log result
           w = result
 
         .catch ->
           # TODO: rebuild syntax if loading the cahce fails
           atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
+
+        w.promise = loadCache
 
     # open notification about syntax generation
     workingNotification = atom.notifications.addInfo 'Rebuilding MOOSE syntax data.', {dismissable: true}
@@ -534,8 +537,6 @@ module.exports =
       throw 'markers not found' if begin < 0 or end < begin
 
       yaml.safeLoad result[begin+beginMarker.length..end-1]
-    .then (result) ->
-      console.log result
 
     mooseSyntax = new Promise (resolve, reject) ->
       cp.execFile appFile, ['--syntax'], (error, stdout, stderr) ->
@@ -563,8 +564,10 @@ module.exports =
       delete w.promise
       w.syntax = result[0]
       w.yaml   = result[1]
+      w
 
-
-    # TODO we return finishSyntaxSetup, but we chain a promise onto it to write out the cache file
+    # we return finishSyntaxSetup, but we chain a promise onto it to write out the cache file
+    finishSyntaxSetup.then (result) ->
+      fs.writeFile cacheFile, JSON.stringify result
 
     w.promise = finishSyntaxSetup
