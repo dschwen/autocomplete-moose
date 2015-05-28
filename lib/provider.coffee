@@ -108,7 +108,6 @@ module.exports =
     # we will later select the most specific match
     matchList = []
 
-    console.log 'w = ', w
     for root in w.yaml
       @recurseYAMLNode root, configPath, matchList
 
@@ -446,13 +445,10 @@ module.exports =
     searchPath = filePath
     matches = []
     loop
-      console.log searchPath
-
       # list all files
       for file in fs.readdirSync(searchPath)
         match = mooseApp.exec(file)
         if match #and fs.isExecutableSync(file)
-          console.log 'found app candidate: ', searchPath, match, file
           fileWithPath = path.join searchPath, file
           matches.push {
             appPath: searchPath
@@ -477,39 +473,9 @@ module.exports =
         atom.notifications.addError 'No MOOSE application executable found.', dismissable: true
         return null
 
-  # fetch YAML and syntax data
-  loadSyntax: (app) ->
-    {appPath, appName, appFile, appDate} = app
-
-    # we store syntax data here:
-    cacheDir = path.join __dirname, '..', 'cache'
-    fs.makeTreeSync cacheDir
-    cacheFile = path.join cacheDir, "#{appName}.json"
-
-    # prepare entry in the syntax warehouse
-    w = syntaxWarehouse[appPath] = {}
-
-    # see if the cache file exists
-    if fs.existsSync cacheFile
-      cacheDate = fs.statSync(cacheFile).mtime.getTime()
-
-      # if the cacheFile is newer than the app compile date we use the cache
-      if cacheDate > appDate
-        # return chained promises to load and parse the cached syntax
-        loadCache = new Promise (resolve, reject) ->
-          fs.readFile cacheFile, 'utf8', (error, content) ->
-            reject() if error?
-            resolve JSON.parse content
-
-        .then (result) ->
-          console.log result
-          w = result
-
-        .catch ->
-          # TODO: rebuild syntax if loading the cahce fails
-          atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
-
-        w.promise = loadCache
+  # rebuild syntax
+  rebuildSyntax: (app, cacheFile, w) ->
+    {appFile} = app
 
     # open notification about syntax generation
     workingNotification = atom.notifications.addInfo 'Rebuilding MOOSE syntax data.', {dismissable: true}
@@ -528,6 +494,7 @@ module.exports =
           resolve yamlData
         else
           reject code
+
     .then (result) ->
       beginMarker = '**START YAML DATA**\n'
       endMarker = '**END YAML DATA**\n'
@@ -571,3 +538,45 @@ module.exports =
       fs.writeFile cacheFile, JSON.stringify result
 
     w.promise = finishSyntaxSetup
+
+  # fetch YAML and syntax data
+  loadSyntax: (app) ->
+    {appPath, appName, appFile, appDate} = app
+
+    # we store syntax data here:
+    cacheDir = path.join __dirname, '..', 'cache'
+    fs.makeTreeSync cacheDir
+    cacheFile = path.join cacheDir, "#{appName}.json"
+
+    # prepare entry in the syntax warehouse
+    w = syntaxWarehouse[appPath] = {}
+
+    # see if the cache file exists
+    if fs.existsSync cacheFile
+      cacheDate = fs.statSync(cacheFile).mtime.getTime()
+
+      # if the cacheFile is newer than the app compile date we use the cache
+      if cacheDate > appDate
+        # return chained promises to load and parse the cached syntax
+        loadCache = new Promise (resolve, reject) ->
+          fs.readFile cacheFile, 'utf8', (error, content) ->
+            reject() if error?
+            resolve content
+
+        .then JSON.parse
+
+        .then (result) ->
+          delete w.promise
+          w.yaml = result.yaml
+          w.syntax = result.syntax
+
+        .catch ->
+          # TODO: rebuild syntax if loading the cahce fails
+          atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
+          delete syntaxWarehouse[appPath]
+          fs.unlink(cacheFile)
+
+        w.promise = loadCache
+        return loadCache
+
+    @rebuildSyntax app, cacheFile, w
