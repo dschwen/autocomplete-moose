@@ -23,6 +23,12 @@ varFamily = /^\s*family\s*=\s*([^\s#=\]]+)$/
 
 mooseApp = /^(.*)-(opt|dbg|oprof)$/
 
+suggestionIcon = {
+  required: '<i class="icon-circle highlight-error"></i>'
+  requiredDefault: '<i class="icon-dot-circle-o highlight-warning"></i>'
+  default: '<i class="icon-circle highlight-success"></i>'
+}
+
 # each moose input file in the project dir could have its own moose app and yaml/syntax associated
 # this table points to the app dir for each editor path
 appDirs = {}
@@ -316,17 +322,20 @@ module.exports =
           defaultValue = 'false' if defaultValue == '0'
           defaultValue = 'true'  if defaultValue == '1'
 
+        icon =
+          if param.name == 'type'
+            't'
+          else if param.required
+            if param.default == '' then suggestionIcon['required'] else suggestionIcon['requiredDefault']
+          else if param.default != ''
+            suggestionIcon['default']
+          else
+            'property'
         completions.push {
           displayText: param.name
           snippet: param.name + ' = ${1:' + defaultValue  + '}'
           description: param.description
-          type:
-            if param.name == 'type'
-              'type'
-            else if param.required
-              'require'
-            else
-              'property'
+          iconHTML: icon
         }
 
     # complete for other parameter values
