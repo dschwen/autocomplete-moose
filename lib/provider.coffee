@@ -25,8 +25,8 @@ mooseApp = /^(.*)-(opt|dbg|oprof)$/
 
 suggestionIcon = {
   required: '<i class="icon-primitive-square text-error"></i>'
-  requiredDefault: '<i class="icon-primitive-dot text-success"></i>'
-  default: '<i class="icon-circle text-warning"></i>'
+  requiredDefault: '<i class="icon-primitive-square text-success"></i>'
+  default: '<i class="icon-primitive-dot text-success"></i>'
   type: '<i class="icon-gear keyword"></i>'
 }
 
@@ -314,10 +314,12 @@ module.exports =
 
       # loop over valid parameters
       for param in @fetchParameterList configPath, explicitType, w
+        console.log param
         continue if param.name in paramNamesFound
         paramNamesFound.push param.name
 
         defaultValue = param.default or ''
+        defaultValue = "'#{defaultValue}'" if defaultValue.indexOf(' ') >= 0
 
         if param.cpp_type == 'bool'
           defaultValue = 'false' if defaultValue == '0'
@@ -326,12 +328,13 @@ module.exports =
         icon =
           if param.name == 'type'
             suggestionIcon['type']
-          else if param.required
+          else if param.required == 'Yes'
             if param.default == '' then suggestionIcon['required'] else suggestionIcon['requiredDefault']
           else if param.default != ''
             suggestionIcon['default']
           else
-            'property'
+            suggestionIcon['default']
+
         completions.push {
           displayText: param.name
           snippet: param.name + ' = ${1:' + defaultValue  + '}'
