@@ -216,7 +216,7 @@ module.exports =
         {text: 'false'}
       ]
 
-    else if param.cpp_type == 'MooseEnum'
+    else if param.cpp_type == 'MooseEnum' or param.cpp_type == 'MultiMooseEnum'
       for option in param.options.split ' '
         completions.push {
           text: option
