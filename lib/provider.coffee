@@ -10,7 +10,7 @@ insideBlockTag = /^\s*\[([^\]#\s]*)$/
 parameterCompletion = /^\s*[^\s#=\]]*$/
 
 typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/
-otherParameter = /^\s*([^\s#=\]]+)\s*=\s*[^\s#=\]]*$/
+otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/
 
 blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
@@ -206,30 +206,47 @@ module.exports =
 
     completions
 
-  # build the suggestion list for parameter values (editor is passed in to build the variable list)
-  computeValueCompletion: (param, editor) ->
-    completions = []
+  # build the vector cpp_type name for a a given single type
+  vectorOf: (type) ->
+    "std::vector<#{type}, std::allocator<#{type}> >"
 
-    if param.cpp_type == 'bool'
+  # build the suggestion list for parameter values (editor is passed in to build the variable list)
+  computeValueCompletion: (param, editor, isQuoted, hasSpace) ->
+    completions = []
+    singleOK = not hasSpace
+    vectorOK = isQuoted or not hasSpace
+
+    if (param.cpp_type == 'bool' and singleOK) or
+       (param.cpp_type == @vectorOf('bool') and vectorOK)
       completions = [
         {text: 'true'}
         {text: 'false'}
       ]
 
-    else if param.cpp_type == 'MooseEnum' or param.cpp_type == 'MultiMooseEnum'
+    else if (param.cpp_type == 'MooseEnum' and singleOK) or
+            (param.cpp_type == 'MultiMooseEnum' and vectorOK)
       for option in param.options.split ' '
         completions.push {
           text: option
         }
 
-    else if param.cpp_type == 'NonlinearVariableName'
+    else if param.cpp_type == 'NonlinearVariableName' and singleOK
       completions = @computeVariableCompletion ['Variables'], editor
 
-    else if param.cpp_type == 'AuxVariableName'
+    else if param.cpp_type == 'AuxVariableName' and singleOK
       completions = @computeVariableCompletion ['AuxVariables'], editor
 
-    else if param.cpp_type == 'std::vector<VariableName>' or param.cpp_type == 'VariableName'
+    else if (param.cpp_type == 'VariableName' and singleOK) or
+            (param.cpp_type == @vectorOf('VariableName') and vectorOK)
       completions = @computeVariableCompletion ['Variables', 'AuxVariables'], editor
+
+    else if (param.cpp_type == 'OutputName' and singleOK) or
+            (param.cpp_type == @vectorOf('OutputName') and vectorOK)
+      completions = [
+        {text: 'exodus'}
+        {text: 'csv'}
+        {text: 'console'}
+      ]
 
     completions
 
@@ -343,11 +360,14 @@ module.exports =
         }
 
     # complete for other parameter values
-    else if @isOtherParameter(line)
-      paramName = otherParameter.exec(line)[1]
+    else if !!(match = otherParameter.exec(line))
+      paramName = match[1]
+      isQuoted = match[2][0] == "'"
+      hasSpace = !!match[3]
       for param in @fetchParameterList configPath, explicitType, w
         if param.name == paramName
-          completions = @computeValueCompletion param, editor
+          console.log param
+          completions = @computeValueCompletion param, editor, isQuoted, hasSpace
           break
 
     completions
@@ -375,7 +395,7 @@ module.exports =
   isTypeParameter: (line) ->
     typeParameter.test line
 
-  # TODO check if we are after the equal sign in a parameter line
+  # check if we are after the equal sign in a parameter line
   isOtherParameter: (line) ->
     otherParameter.test line
 
@@ -461,8 +481,9 @@ module.exports =
       # list all files
       for file in fs.readdirSync(searchPath)
         match = mooseApp.exec(file)
-        if match #and fs.isExecutableSync(file)
+        if match
           fileWithPath = path.join searchPath, file
+          continue if not fs.isExecutableSync(fileWithPath)
           matches.push {
             appPath: searchPath
             appName: match[1]
@@ -470,13 +491,13 @@ module.exports =
             appDate: fs.statSync(fileWithPath).mtime.getTime()
           }
 
-        if matches.length > 0
-          # return newest application
-          matches.sort (a, b) ->
-            a.appDate < b.appDate
+      if matches.length > 0
+        # return newest application
+        matches.sort (a, b) ->
+          a.appDate < b.appDate
 
-          appDirs[filePath] = matches[0]
-          return appDirs[filePath]
+        appDirs[filePath] = matches[0]
+        return appDirs[filePath]
 
       # go to parent
       previous_path = searchPath
