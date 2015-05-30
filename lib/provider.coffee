@@ -28,6 +28,7 @@ suggestionIcon = {
   hasDefault: '<i class="icon-primitive-square text-success"></i>'
   noDefault: '<i class="icon-primitive-dot text-success"></i>'
   type: '<i class="icon-gear keyword"></i>'
+  output: '<i class="icon-database text-info"></i>'
 }
 
 # each moose input file in the project dir could have its own moose app and yaml/syntax associated
@@ -242,11 +243,7 @@ module.exports =
 
     else if (param.cpp_type == 'OutputName' and singleOK) or
             (param.cpp_type == @vectorOf('OutputName') and vectorOK)
-      completions = [
-        {text: 'exodus'}
-        {text: 'csv'}
-        {text: 'console'}
-      ]
+      completions.push {text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr']
 
     completions
 
@@ -319,6 +316,7 @@ module.exports =
           completions.push {text: completion}
       else
         # special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
+        # TODO factor out, see below
         paramName = otherParameter.exec(line)[1]
         for param in @fetchParameterList originalConfigPath, explicitType, w
           if param.name == paramName
@@ -361,12 +359,12 @@ module.exports =
 
     # complete for other parameter values
     else if !!(match = otherParameter.exec(line))
+      # TODO factor out, see above
       paramName = match[1]
       isQuoted = match[2][0] == "'"
       hasSpace = !!match[3]
       for param in @fetchParameterList configPath, explicitType, w
         if param.name == paramName
-          console.log param
           completions = @computeValueCompletion param, editor, isQuoted, hasSpace
           break
 
