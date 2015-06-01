@@ -227,10 +227,11 @@ module.exports =
 
     else if (param.cpp_type == 'MooseEnum' and singleOK) or
             (param.cpp_type == 'MultiMooseEnum' and vectorOK)
-      for option in param.options.split ' '
-        completions.push {
-          text: option
-        }
+      if param.options?
+        for option in param.options.split ' '
+          completions.push {
+            text: option
+          }
 
     else if (param.cpp_type == 'NonlinearVariableName' and singleOK) or
             (@isVectorOf(param.cpp_type, 'NonlinearVariableName') and vectorOK)
@@ -252,7 +253,7 @@ module.exports =
 
   # w contains the syntax applicable to the current file
   computeCompletion: (request, w) ->
-    {editor,bufferPosition} = request
+    {editor, bufferPosition} = request
     completions = []
     line = @lineToCursor editor, bufferPosition
 
