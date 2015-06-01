@@ -207,9 +207,10 @@ module.exports =
 
     completions
 
-  # build the vector cpp_type name for a a given single type
-  vectorOf: (type) ->
-    "std::vector<#{type}, std::allocator<#{type}> >"
+  # checks if this is a vector type build the vector cpp_type name for a given single type (checks for gcc and clang variants)
+  isVectorOf: (yamltype, type) ->
+    yamltype == "std::vector<#{type}, std::allocator<#{type}> >" or
+    yamltype == "std::vector<#{type}>"
 
   # build the suggestion list for parameter values (editor is passed in to build the variable list)
   computeValueCompletion: (param, editor, isQuoted, hasSpace) ->
@@ -218,7 +219,7 @@ module.exports =
     vectorOK = isQuoted or not hasSpace
 
     if (param.cpp_type == 'bool' and singleOK) or
-       (param.cpp_type == @vectorOf('bool') and vectorOK)
+       (@isVectorOf(param.cpp_type, 'bool') and vectorOK)
       completions = [
         {text: 'true'}
         {text: 'false'}
@@ -231,18 +232,20 @@ module.exports =
           text: option
         }
 
-    else if param.cpp_type == 'NonlinearVariableName' and singleOK
+    else if (param.cpp_type == 'NonlinearVariableName' and singleOK) or
+            (@isVectorOf(param.cpp_type, 'NonlinearVariableName') and vectorOK)
       completions = @computeVariableCompletion ['Variables'], editor
 
-    else if param.cpp_type == 'AuxVariableName' and singleOK
+    else if (param.cpp_type == 'AuxVariableName' and singleOK) or
+            (@isVectorOf(param.cpp_type, 'AuxVariableName') and vectorOK)
       completions = @computeVariableCompletion ['AuxVariables'], editor
 
     else if (param.cpp_type == 'VariableName' and singleOK) or
-            (param.cpp_type == @vectorOf('VariableName') and vectorOK)
+            (@isVectorOf(param.cpp_type, 'VariableName') and vectorOK)
       completions = @computeVariableCompletion ['Variables', 'AuxVariables'], editor
 
     else if (param.cpp_type == 'OutputName' and singleOK) or
-            (param.cpp_type == @vectorOf('OutputName') and vectorOK)
+            (@isVectorOf(param.cpp_type, 'OutputName') and vectorOK)
       completions.push {text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr']
 
     completions
