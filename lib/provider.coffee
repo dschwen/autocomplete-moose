@@ -251,19 +251,40 @@ module.exports =
 
     completions
 
+  getPrefix: (line) ->
+    # Whatever your prefix regex might be
+    regex = /[\w0-9_\-.\/\[]+$/
+
+    # Match the regex to the line, and return the match
+    line.match(regex)?[0] or ''
+
   # w contains the syntax applicable to the current file
   computeCompletion: (request, w) ->
     {editor, bufferPosition} = request
     completions = []
-    line = @lineToCursor editor, bufferPosition
+
+    # current line up to the cursor position
+    line = editor.getTextInRange([[bufferPosition.row, 0], bufferPosition])
+    prefix = @getPrefix line
 
     # get the type pseudo path (for the yaml)
     {configPath, explicitType} = @getCurrentConfigPath(editor, bufferPosition)
 
     # for empty [] we suggest blocks
     if @isOpenBracketPair(line)
-      # get the true replacementPrefix (autocomplete does not see the "./")
-      givenPrefix = insideBlockTag.exec(line)[1]
+      # get the postfix (to determine if we need to append a ] or not)
+      postLine = editor.getTextInRange([bufferPosition, [bufferPosition.row, bufferPosition.column+1]])
+      blockPostfix = if postLine.length > 0 and postLine[0] == ']' then ']' else  ''
+
+      # handle relative paths
+      blockPrefix = if configPath.length > 0 then '[./' else '['
+
+      # add block close tag to suggestions
+      if configPath.length > 0
+        completions.push {
+          text: '[../' + blockPostfix
+          displayText: '..'
+        }
 
       # go over all entries in the syntax file to find a match
       for suggestionText in w.syntax
@@ -282,22 +303,17 @@ module.exports =
         if match
           completion = suggestion[configPath.length]
 
-          # handle the prefix correctly
-          prefix = ''
-          if configPath.length > 0
-            if givenPrefix.substr(0, 1) != '.'
-              prefix = './'
-            else if givenPrefix.substr(0, 2) != './'
-              prefix = '/'
-
           # add to suggestions if it is a new suggestion
           if completion == '*'
             completions.push {
-              displayText: prefix + '*'
-              snippet: prefix + '${1:name}'
+              displayText: '*'
+              snippet: blockPrefix + '${1:name}' + blockPostfix
             }
-          else
-            completions.push {text: prefix + completion} unless completion == ''
+          else if completion != ''
+            completions.push {
+              text: blockPrefix + completion + blockPostfix
+              displayText: completion
+            }
 
     # complete for type parameter
     else if @isTypeParameter(line)
@@ -372,6 +388,10 @@ module.exports =
           completions = @computeValueCompletion param, editor, isQuoted, hasSpace
           break
 
+    # set the custom prefix
+    for completion in completions
+      completion.replacementPrefix = prefix
+
     completions
 
   onDidInsertSuggestion: ({editor, suggestion}) ->
@@ -379,11 +399,6 @@ module.exports =
 
   triggerAutocomplete: (editor) ->
     atom.commands.dispatch(atom.views.getView(editor), 'autocomplete-plus:activate', {activatedManually: false})
-
-  # current line up to the cursor position
-  lineToCursor: (editor, position) ->
-    line = editor.lineTextForBufferRow position.row
-    line.substr 0, position.column
 
   # check if the current line is empty (in that case we complete for parameter names or block names)
   isLineEmpty: (editor, position) ->
@@ -396,10 +411,6 @@ module.exports =
   # check if the current line is a type parameter
   isTypeParameter: (line) ->
     typeParameter.test line
-
-  # check if we are after the equal sign in a parameter line
-  isOtherParameter: (line) ->
-    otherParameter.test line
 
   # check if the current line is a type parameter
   isParameterCompletion: (line) ->
