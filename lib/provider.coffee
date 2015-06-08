@@ -333,7 +333,7 @@ module.exports =
         # iterate over subblocks and add final yaml path element to suggestions
         for subNode in node.subblocks or []
           completion = (subNode.name.split '/')[-1..][0]
-          completions.push {text: completion}
+          completions.push {text: completion, description: subNode.description}
       else
         # special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
         # TODO factor out, see below
