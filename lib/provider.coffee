@@ -449,21 +449,21 @@ module.exports =
 
     loop
       # test the current line for block markers
-      if blockOpenTop.test(line)
+      if blockOpenTop.test line
         configPath.unshift(blockOpenTop.exec(line)[1])
         break
 
-      if blockOpenOneLevel.test(line)
+      if blockOpenOneLevel.test line
         depth--
         if level == 0
           configPath.unshift(blockOpenOneLevel.exec(line)[1])
         else
           level--
 
-      if blockCloseTop.test(line)
+      if blockCloseTop.test line
         return {configPath: []}
 
-      if blockCloseOneLevel.test(line)
+      if blockCloseOneLevel.test line
         depth++
         level++
 
@@ -476,7 +476,12 @@ module.exports =
       row -= 1
       if row < 0
         return {configPath: []}
-      line = editor.lineTextForBufferRow(row)
+      line = editor.lineTextForBufferRow row
+
+      # remove comments
+      commentCharPos = line.indexOf '#'
+      if commentCharPos >= 0
+        line = line.substr 0, commentCharPos
 
     {configPath: configPath, explicitType: type}
 
@@ -496,7 +501,7 @@ module.exports =
         match = mooseApp.exec(file)
         if match
           fileWithPath = path.join searchPath, file
-          continue if not fs.isExecutableSync(fileWithPath)
+          continue if not fs.isExecutableSync fileWithPath
           matches.push {
             appPath: searchPath
             appName: match[1]
