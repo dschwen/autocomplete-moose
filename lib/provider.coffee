@@ -18,9 +18,6 @@ blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
 blockCloseOneLevel = /\[\.\.\/\]/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
 
-varOrder = /^\s*order\s*=\s*([^\s#=\]]+)$/
-varFamily = /^\s*family\s*=\s*([^\s#=\]]+)$/
-
 mooseApp = /^(.*)-(opt|dbg|oprof)$/
 
 suggestionIcon = {
@@ -137,6 +134,9 @@ module.exports =
     {node, fuzzyOnLast} = @matchYAMLNode configPath, w
     searchNodes = [node]
 
+    # bail out if we are in an invalid path
+    return [] unless node?
+
     # add typed node if either explicitly set in input or if a default is known
     if not explicitType?
       for param in node.parameters or []
@@ -155,17 +155,19 @@ module.exports =
 
     paramList
 
-  # parse current file to build a list of variables
-  fetchVariableList: (blockName, editor) ->
+  # parse current file and gather subblocks of a given top block (Functions, PostProcessors)
+  fetchSubBlockList: (blockName, propertyNames, editor) ->
     i = 0
     level = 0
-    variableList = []
+    subBlockList = []
+    filterList = ({name: property, re: new RegExp "^\\s*#{property}\\s*=\\s*([^\\s#=\\]]+)$"} for property in propertyNames)
+
     nlines = editor.getLineCount()
 
-    # find start of var block
+    # find start of selected block
     i++ while i < nlines and editor.lineTextForBufferRow(i).indexOf('[' + blockName + ']') == -1
 
-    # parse contents of variable block
+    # parse contents of subBlock block
     loop
       break if i >= nlines
       line = editor.lineTextForBufferRow i
@@ -173,39 +175,44 @@ module.exports =
 
       if blockOpenOneLevel.test line
         if level == 0
-          variable = {name: blockOpenOneLevel.exec(line)[1]}
+          subBlock = {name: blockOpenOneLevel.exec(line)[1], properties: {}}
         level++
 
       else if blockCloseOneLevel.test(line)
         level--
         if level == 0
-          variableList.push variable
+          subBlockList.push subBlock
 
-      else if level == 1 and varFamily.test line
-        variable.family = varFamily.exec(line)[1]
-
-      else if level == 1 and varOrder.test line
-        variable.order = varOrder.exec(line)[1]
+      else if level == 1
+        for filter in filterList
+          if match = filter.re.exec line
+            subBlock.properties[filter.name] = match[1]
+            break
 
       i++
 
-    variableList
+    subBlockList
 
-  # variable completions
-  computeVariableCompletion: (blockNames, editor) ->
+  # generic completion list builder for subblock names
+  computeSubBlockNameCompletion: (blockNames, propertyNames, editor) ->
     completions = []
     for block in blockNames
-      for {name, family, order} in @fetchVariableList block, editor
-        type = []
-        type.push order if order?
-        type.push family if family?
+      for {name, properties} in @fetchSubBlockList block, propertyNames, editor
+        doc = []
+        for propertyName in propertyNames
+          if propertyName of properties
+            doc.push properties[propertyName]
 
         completions.push {
           text: name
-          description: type.join ' '
+          description: doc.join ' '
         }
 
     completions
+
+  # variable completions
+  computeVariableCompletion: (blockNames, editor) ->
+    @computeSubBlockNameCompletion blockNames, ['order', 'family'], editor
 
   # checks if this is a vector type build the vector cpp_type name for a given single type (checks for gcc and clang variants)
   isVectorOf: (yamltype, type) ->
@@ -217,6 +224,10 @@ module.exports =
     completions = []
     singleOK = not hasSpace
     vectorOK = isQuoted or not hasSpace
+
+    hasType = (type) =>
+      return (param.cpp_type == type and singleOK) or
+             (@isVectorOf(param.cpp_type, type) and vectorOK)
 
     if (param.cpp_type == 'bool' and singleOK) or
        (@isVectorOf(param.cpp_type, 'bool') and vectorOK)
@@ -233,17 +244,23 @@ module.exports =
             text: option
           }
 
-    else if (param.cpp_type == 'NonlinearVariableName' and singleOK) or
-            (@isVectorOf(param.cpp_type, 'NonlinearVariableName') and vectorOK)
+    else if hasType 'NonlinearVariableName'
       completions = @computeVariableCompletion ['Variables'], editor
 
-    else if (param.cpp_type == 'AuxVariableName' and singleOK) or
-            (@isVectorOf(param.cpp_type, 'AuxVariableName') and vectorOK)
+    else if hasType 'AuxVariableName'
       completions = @computeVariableCompletion ['AuxVariables'], editor
 
-    else if (param.cpp_type == 'VariableName' and singleOK) or
-            (@isVectorOf(param.cpp_type, 'VariableName') and vectorOK)
+    else if hasType 'VariableName'
       completions = @computeVariableCompletion ['Variables', 'AuxVariables'], editor
+
+    else if hasType 'FunctionName'
+      completions = @computeSubBlockNameCompletion ['Functions'], ['type'], editor
+
+    else if hasType 'PostprocessorName'
+      completions = @computeSubBlockNameCompletion ['Postprocessors'], ['type'], editor
+
+    else if hasType 'UserObjectName'
+      completions = @computeSubBlockNameCompletion ['Postprocessors', 'UserObjects'], ['type'], editor
 
     else if (param.cpp_type == 'OutputName' and singleOK) or
             (@isVectorOf(param.cpp_type, 'OutputName') and vectorOK)
