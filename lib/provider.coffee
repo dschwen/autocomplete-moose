@@ -19,6 +19,7 @@ blockCloseOneLevel = /\[\.\.\/\]/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
 
 mooseApp = /^(.*)-(opt|dbg|oprof)$/
+stdVector = /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/
 
 suggestionIcon = {
   required: '<i class="icon-primitive-square text-error"></i>'
@@ -35,7 +36,7 @@ syntaxWarehouse = {}
 
 module.exports =
   selector: '.input.moose'
-  disableForSelector: '.input.moose .comment, .input.moose .string'
+  disableForSelector: '.input.moose .comment'
   inclusionPriority: 1
   excludeLowerPriority: true
 
@@ -215,9 +216,8 @@ module.exports =
     @computeSubBlockNameCompletion blockNames, ['order', 'family'], editor
 
   # checks if this is a vector type build the vector cpp_type name for a given single type (checks for gcc and clang variants)
-  isVectorOf: (yamltype, type) ->
-    yamltype == "std::vector<#{type}, std::allocator<#{type}> >" or
-    yamltype == "std::vector<#{type}>"
+  isVectorOf: (yamlType, type) ->
+    (match = stdVector.exec yamlType) and match[2] == type
 
   # build the suggestion list for parameter values (editor is passed in to build the variable list)
   computeValueCompletion: (param, editor, isQuoted, hasSpace) ->
