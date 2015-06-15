@@ -1,6 +1,6 @@
 {
   "name": "autocomplete-moose",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "MOOSE finite element framework input file autocompletions",
   "main": "./lib/main",
   "license": "MIT",
