@@ -8,27 +8,23 @@ The _MOOSE autocomplete_ plugin will automatically call your MOOSE-based app to 
 The syntax is cached and will be rebuilt if your app is recompiled. The MOOSE-based app (or a symbolic link pointing to the executable) must be in or (an arbitrary
 number of parent directory levels) above the directory of the current input file.
 
-## Block names
-Block names are suggested when the autocompletion is triggered with the cursor inside a ```[]``` pair of square brackets.
+All completions are _context sensitive_, i.e. only valid items are suggested for the current cursor position.
+The following completions are provided:
 
-![Block name completion](http://i.imgur.com/wGxI8t7.gif)
+* Block names and subblock names
+* Block ```type``` parameters with a selection of applicable Moose objects
+  * Class documentation string is shown
+* Parameter names depending on the ```type``` of the current block
+  * Parameter documentation string is shown
+* Parameter values (also for vector parameters) for
+  * Variable names for non-linear and/or auxiliary variables
+  * Function names for functions explicitly defined in the ```[Functions]``` block
+  * User object and Postprocessor names
+  * Valid options for ```MooseEnum``` and ```MultiMooseEnum``` parameters
+  * Initial support for output types
+  * Boolean types
+  * Pre-fill default values
 
-## Parameter names
-Parameter names are suggested when the autocompletion is triggered within a block on an empty line. The autocompletion is sensitive to the type (or default type) of the current block!
+###Screen shot
 
-![Parameter name completion](http://i.imgur.com/9IwJuqt.gif)
-
-## Parameter values
-Parameter values are suggested (MooseEnums, bools) if the cursor is behind an ```=``` equal sign that is preceeded by a valid parameter name for the current bock.
-
-![Parameter value completion](http://i.imgur.com/VNztT7O.gif)
-
-### Variable completion
-Parameters taking variable names (Aux or Non-linear) get a list of currently defined variable names.
-
-![Variable name completion](http://i.imgur.com/U7MrRBs.gif)
-
-### Type parameter completion
-Valid block types are suggested. Further parameter suggestions in the current block depend on the choice of the bock type.
-
-![Block type completion](http://i.imgur.com/tyFuFgp.gif)
+![in action](http://dschwen.github.io/img/autocomplete.gif)
