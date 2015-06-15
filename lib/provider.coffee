@@ -262,6 +262,9 @@ module.exports =
     else if hasType 'UserObjectName'
       completions = @computeSubBlockNameCompletion ['Postprocessors', 'UserObjects'], ['type'], editor
 
+    else if hasType 'VectorPostprocessorName'
+      completions = @computeSubBlockNameCompletion ['VectorPostprocessors'], ['type'], editor
+
     else if (param.cpp_type == 'OutputName' and singleOK) or
             (@isVectorOf(param.cpp_type, 'OutputName') and vectorOK)
       completions.push {text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr']

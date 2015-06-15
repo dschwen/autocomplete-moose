@@ -1,3 +1,7 @@
+## 0.16.0
+* Bug fix: Enable completion in strings (closed quotes)
+* Improvement: Add ```VectorPostprocessor``` name completion
+
 ## 0.15.0
 * Bug fix: do not show a script error when triggering completion in invaldid config file paths
 * Feature: Add completions for Function, Postprocessor, and UserObject names

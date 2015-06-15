@@ -8,6 +8,8 @@ The _MOOSE autocomplete_ plugin will automatically call your MOOSE-based app to 
 The syntax is cached and will be rebuilt if your app is recompiled. The MOOSE-based app (or a symbolic link pointing to the executable) must be in or (an arbitrary
 number of parent directory levels) above the directory of the current input file.
 
+###Supported completions
+
 All completions are _context sensitive_, i.e. only valid items are suggested for the current cursor position.
 The following completions are provided:
 
@@ -19,7 +21,7 @@ The following completions are provided:
 * Parameter values (also for vector parameters) for
   * Variable names for non-linear and/or auxiliary variables
   * Function names for functions explicitly defined in the ```[Functions]``` block
-  * User object and Postprocessor names
+  * ```UserObject```, ```Postprocessor```, and ```VectorPostprocessorName``` names
   * Valid options for ```MooseEnum``` and ```MultiMooseEnum``` parameters
   * Initial support for output types
   * Boolean types
@@ -28,3 +30,7 @@ The following completions are provided:
 ###Screen shot
 
 ![in action](http://dschwen.github.io/img/autocomplete.gif)
+
+###Changes
+
+Check the [changelog](https://github.com/dschwen/autocomplete-moose/blob/master/CHANGELOG.md) on GitHub.
