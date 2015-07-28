@@ -542,6 +542,12 @@ module.exports =
       searchPath = path.join searchPath, '..'
 
       if searchPath is previous_path
+        # no executable found, let's check the fallback path
+        fallbackMooseDir = atom.config.get "autocomplete-moose.fallbackMooseDir"
+        if fallbackMooseDir != '' and filePath != fallbackMooseDir
+          return @findApp fallbackMooseDir
+
+        # otherwise pop up an error notification (if not disabled) end give up
         atom.notifications.addError 'No MOOSE application executable found.', dismissable: true \
           unless  atom.config.get "autocomplete-moose.ignoreMooseNotFoundError"
         return null

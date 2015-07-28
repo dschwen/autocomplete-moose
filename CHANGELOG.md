@@ -1,5 +1,8 @@
+## 0.18.0
+* Improvement: Add config option for a fallback directory to find a MOOSE application in
+
 ## 0.17.0
-* Improvement: Add config option to ignore missing MOOSE executable errors
+* Improvement: Add config option to ignore missing MOOSE executable errors (patched in 0.17.1)
 
 ## 0.16.0
 * Bug fix: Enable completion in strings (closed quotes)

@@ -5,5 +5,8 @@ module.exports =
     ignoreMooseNotFoundError:
       type: 'boolean'
       default: false
+    fallbackMooseDir:
+      type: 'string'
+      default: ''
 
   getProvider: -> provider
