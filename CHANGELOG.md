@@ -1,3 +1,6 @@
+## 0.17.0
+* Improvement: Add config option to ignore missing MOOSE executable errors
+
 ## 0.16.0
 * Bug fix: Enable completion in strings (closed quotes)
 * Improvement: Add ```VectorPostprocessor``` name completion

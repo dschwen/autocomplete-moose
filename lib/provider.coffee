@@ -541,7 +541,7 @@ module.exports =
       previous_path = searchPath
       searchPath = path.join searchPath, '..'
 
-      if searchPath is previous_path
+      if searchPath is previous_path and not atom.config.get "autocomplete-moose.ignoreMooseNotFoundError"
         atom.notifications.addError 'No MOOSE application executable found.', dismissable: true
         return null
 
@@ -565,7 +565,7 @@ module.exports =
         if code is 0
           resolve yamlData
         else
-          reject code
+          reject {code: code, output: yamlData, appFile: appFile}
 
     .then (result) ->
       beginMarker = '**START YAML DATA**\n'
@@ -579,7 +579,7 @@ module.exports =
 
     mooseSyntax = new Promise (resolve, reject) ->
       cp.execFile appFile, ['--syntax'], (error, stdout, stderr) ->
-        reject('syntax') if error?
+        reject error if error?
 
         lines = stdout.toString().split('\n')
         begin = lines.indexOf '**START SYNTAX DATA**'
