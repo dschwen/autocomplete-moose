@@ -541,8 +541,9 @@ module.exports =
       previous_path = searchPath
       searchPath = path.join searchPath, '..'
 
-      if searchPath is previous_path and not atom.config.get "autocomplete-moose.ignoreMooseNotFoundError"
-        atom.notifications.addError 'No MOOSE application executable found.', dismissable: true
+      if searchPath is previous_path
+        atom.notifications.addError 'No MOOSE application executable found.', dismissable: true \
+          unless  atom.config.get "autocomplete-moose.ignoreMooseNotFoundError"
         return null
 
   # rebuild syntax
