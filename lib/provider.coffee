@@ -72,6 +72,13 @@ module.exports =
     else
       loaded = @loadSyntax dir
       loaded.then =>
+        # watch executable
+        fs.watch dir.appFile, (event, filename) =>
+          # force rebuilding of syntax if executable changed
+          delete appDirs[filePath]
+          delete syntaxWarehouse[dir.appPath]
+
+        # perform completion
         @computeCompletion request, syntaxWarehouse[dir.appPath]
 
   recurseYAMLNode: (node, configPath, matchList) ->
