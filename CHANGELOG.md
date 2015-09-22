@@ -1,5 +1,6 @@
 ## 0.19.0
 * Improvement: Automatically rebuild MOOSE syntax when the application is changed
+* Improvement: Add command to manually clear the syntax cache
 
 ## 0.18.0
 * Improvement: Add config option for a fallback directory to find a MOOSE application in

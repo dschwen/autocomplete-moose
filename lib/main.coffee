@@ -9,4 +9,7 @@ module.exports =
       type: 'string'
       default: ''
 
+  activate: (state) ->
+    atom.commands.add 'atom-workspace', 'autocomplete-moose:clear-cache', => provider.clearCache()
+
   getProvider: -> provider

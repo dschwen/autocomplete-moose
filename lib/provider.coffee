@@ -45,6 +45,16 @@ module.exports =
   # efficiency.
   filterSuggestions: true
 
+  # Clear the cache for the app associated with current file.
+  # This is made available as an atom command.
+  clearCache: ->
+    editor = atom.workspace.getActiveTextEditor()
+    filePath = path.dirname editor.getPath()
+    if filePath of appDirs
+      appPath = appDirs[filePath].appPath
+      delete appDirs[filePath]
+      delete syntaxWarehouse[appPath] if appPath of syntaxWarehouse
+
   # entry point for the suggestion provider
   # this function will load the syntax files if neccessary before callling
   # the actual completion suggestion builder
