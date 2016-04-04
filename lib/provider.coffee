@@ -311,7 +311,7 @@ module.exports =
     if @isOpenBracketPair(line)
       # get the postfix (to determine if we need to append a ] or not)
       postLine = editor.getTextInRange([bufferPosition, [bufferPosition.row, bufferPosition.column+1]])
-      blockPostfix = if postLine.length > 0 and postLine[0] == ']' then ']' else  ''
+      blockPostfix = if postLine.length > 0 and postLine[0] == ']' then '' else  ']'
 
       # handle relative paths
       blockPrefix = if configPath.length > 0 then '[./' else '['
