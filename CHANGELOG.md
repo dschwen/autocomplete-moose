@@ -1,3 +1,6 @@
+## 0.19.1
+* Bug fix [#4](https://github.com/dschwen/autocomplete-moose/issues/4): Fix reversed logic to suppress adding closing `]` brackets
+
 ## 0.19.0
 * Improvement: Automatically rebuild MOOSE syntax when the application is changed
 * Improvement: Add command to manually clear the syntax cache
