@@ -232,6 +232,17 @@ module.exports =
   computeVariableCompletion: (blockNames, editor) ->
     @computeSubBlockNameCompletion blockNames, ['order', 'family'], editor
 
+  # Filename completions
+  computeFileNameCompletion: (wildcards, editor) ->
+    filePath = path.dirname editor.getPath()
+    dir = fs.readdirSync filePath
+
+    completions = []
+    for name in dir
+      completions.push { text: name }
+
+    completions
+
   # checks if this is a vector type build the vector cpp_type name for a given single type (checks for gcc and clang variants)
   isVectorOf: (yamlType, type) ->
     (match = stdVector.exec yamlType) and match[2] == type
@@ -285,6 +296,9 @@ module.exports =
     else if (param.cpp_type == 'OutputName' and singleOK) or
             (@isVectorOf(param.cpp_type, 'OutputName') and vectorOK)
       completions.push {text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr']
+
+    else if (hasType 'FileName') or (hasType 'MeshFileName')
+      completions = @computeFileNameCompletion ['*.e'], editor
 
     completions
 

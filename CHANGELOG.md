@@ -1,3 +1,6 @@
+## 0.20.0
+* Improvement: Initial support for filename completion (current directory only)
+
 ## 0.19.1
 * Bug fix [#4](https://github.com/dschwen/autocomplete-moose/issues/4): Fix reversed logic to suppress adding closing `]` brackets
 
