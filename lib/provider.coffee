@@ -18,7 +18,7 @@ blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
 blockCloseOneLevel = /\[\.\.\/\]/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
 
-mooseApp = /^(.*)-(opt|dbg|oprof)$/
+mooseApp = /^(.*)-(opt|dbg|oprof|devel)$/
 stdVector = /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/
 
 suggestionIcon = {
