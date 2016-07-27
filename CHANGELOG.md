@@ -1,3 +1,6 @@
+## 0.21.0
+* Improvement: Add `*-devel` executable support.
+
 ## 0.20.0
 * Improvement: Initial support for filename completion (current directory only)
 
