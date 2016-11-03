@@ -26,8 +26,8 @@ suggestionIcon = {
   output: '<i class="icon-database text-info"></i>'
 }
 
-# each moose input file in the project dir could have its own moose app and yaml/syntax associated
-# this table points to the app dir for each editor path
+# each moose input file in the project dir could have its own moose app and
+# yaml/syntax associated this table points to the app dir for each editor path
 appDirs = {}
 syntaxWarehouse = {}
 
@@ -62,7 +62,8 @@ module.exports =
     dir = @findApp filePath
     return [] if not dir?
 
-    # check if the syntax is already loaded, currently loading, or not requested yet
+    # check if the syntax is already loaded, currently loading,
+    # or not requested yet
     if dir.appPath of syntaxWarehouse
       w = syntaxWarehouse[dir.appPath]
 
@@ -80,7 +81,7 @@ module.exports =
       loaded = @loadSyntax dir
       loaded.then =>
         # watch executable
-        fs.watch dir.appFile, (event, filename) =>
+        fs.watch dir.appFile, (event, filename) ->
           # force rebuilding of syntax if executable changed
           delete appDirs[filePath]
           delete syntaxWarehouse[dir.appPath]
@@ -124,8 +125,8 @@ module.exports =
       @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
 
   matchYAMLNode: (configPath, w) ->
-    # we need to match this to one node in the yaml tree. multiple matches may occur
-    # we will later select the most specific match
+    # we need to match this to one node in the yaml tree. multiple matches may
+    # occur we will later select the most specific match
     matchList = []
 
     for root in w.yaml
@@ -139,7 +140,7 @@ module.exports =
       a.fuzz > b.fuzz
     return matchList[0]
 
-  # fetch a list of valis parameters for the current config path
+  # fetch a list of valid parameters for the current config path
   fetchParameterList: (configPath, explicitType, w) ->
     # parameters cannot exist outside of top level blocks
     return [] if configPath.length == 0
@@ -170,7 +171,8 @@ module.exports =
 
     paramList
 
-  # parse current file and gather subblocks of a given top block (Functions, PostProcessors)
+  # parse current file and gather subblocks of a given top block (Functions,
+  # PostProcessors)
   fetchSubBlockList: (blockName, propertyNames, editor) ->
     i = 0
     level = 0
@@ -240,11 +242,13 @@ module.exports =
 
     completions
 
-  # checks if this is a vector type build the vector cpp_type name for a given single type (checks for gcc and clang variants)
+  # checks if this is a vector type build the vector cpp_type name for a
+  # given single type (checks for gcc and clang variants)
   isVectorOf: (yamlType, type) ->
     (match = stdVector.exec yamlType) and match[2] == type
 
-  # build the suggestion list for parameter values (editor is passed in to build the variable list)
+  # build the suggestion list for parameter values (editor is passed in
+  # to build the variable list)
   computeValueCompletion: (param, editor, isQuoted, hasSpace) ->
     completions = []
     singleOK = not hasSpace
@@ -383,7 +387,8 @@ module.exports =
           completion = (subNode.name.split '/')[-1..][0]
           completions.push {text: completion, description: subNode.description}
       else
-        # special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
+        # special case where 'type' is an actual parameter
+        # (such as /Executioner/Quadrature)
         # TODO factor out, see below
         paramName = otherParameter.exec(line)[1]
         for param in @fetchParameterList originalConfigPath, explicitType, w
@@ -448,7 +453,8 @@ module.exports =
   triggerAutocomplete: (editor) ->
     atom.commands.dispatch(atom.views.getView(editor), 'autocomplete-plus:activate', {activatedManually: false})
 
-  # check if the current line is empty (in that case we complete for parameter names or block names)
+  # check if the current line is empty (in that case we complete for parameter
+  # names or block names)
   isLineEmpty: (editor, position) ->
     emptyLine.test(editor.lineTextForBufferRow(position.row))
 
@@ -471,7 +477,8 @@ module.exports =
       line = line.substr(cpos)
     line
 
-  # add the /Type (or /<type>/Type for top level blocks) pseudo path if we are inside a typed block
+  # add the /Type (or /<type>/Type for top level blocks) pseudo path
+  # if we are inside a typed block
   getTypedPath: (configPath, type, fuzzyOnLast) ->
     typedConfigPath = configPath[..]
 
@@ -491,39 +498,34 @@ module.exports =
     row = position.row
     line = editor.lineTextForBufferRow(row).substr(0, position.column)
     configPath = []
-    type = null
-    level = 0
-    depth = 0
+    types = []
+
+    normalize = (configPath) ->
+      return path.join.apply(undefined, configPath).split(path.sep)
 
     loop
       # test the current line for block markers
       if blockTagContent.test line
         tagContent = blockTagContent.exec(line)[1].split('/')
 
-        if tagContent.length == 1
-          if tagContent[0] == ''
-            return {configPath: []}
-          else
-            configPath.unshift(tagContent[0])
-            break
+        if tagContent.length == 1 && tagContent[0] == ''
+          return {configPath: []}
 
-        if tagContent.length == 2
-          if tagContent[0] == '.'
-            depth--
-            if level == 0
-              configPath.unshift(tagContent[1])
-            else
-              level--
-          if tagContent[0] == '..' and tagContent[1] == ''
-            depth++
-            level++
+        else
+          # prepend the tagContent entries to configPath
+          Array.prototype.unshift.apply(configPath ,tagContent)
+          for typePath in types
+            Array.prototype.unshift.apply(typePath[0] ,tagContent)
+
+        if tagContent[0] != '.' and tagContent[0] != '..'
+          break
 
       # test for a type parameter
-      if blockType.test(line) and level == 0 and depth == 0 and type == null
-        type = blockType.exec(line)[1]
+      if blockType.test(line)
+        types.push [[], blockType.exec(line)[1]]
 
-
-      # decrement row and fetch line (if we have not found a path we assume we are at the top level)
+      # decrement row and fetch line (if we have not found a path we assume
+      # we are at the top level)
       row -= 1
       if row < 0
         return {configPath: []}
@@ -534,6 +536,11 @@ module.exports =
       if commentCharPos >= 0
         line = line.substr 0, commentCharPos
 
+    configPath = normalize configPath
+    type = null
+    for typePath in types
+      if normalize(typePath[0]).join('/') == configPath.join('/')
+        type = typePath[1]
     {configPath: configPath, explicitType: type}
 
   findApp: (filePath) ->
@@ -643,7 +650,8 @@ module.exports =
       w.yaml   = result[1]
       w
 
-    # we return finishSyntaxSetup, but we chain a promise onto it to write out the cache file
+    # we return finishSyntaxSetup, but we chain a promise onto it to write out
+    # the cache file
     finishSyntaxSetup.then (result) ->
       fs.writeFile cacheFile, JSON.stringify result
 
