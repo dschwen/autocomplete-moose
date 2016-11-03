@@ -12,10 +12,7 @@ parameterCompletion = /^\s*[^\s#=\]]*$/
 typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/
 otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/
 
-blockOpenTop = /\[([^.\/][^\/]*)\]/
-blockCloseTop = /\[\]/
-blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
-blockCloseOneLevel = /\[\.\.\/\]/
+blockTagContent = /\[([^\]]*)\]/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
 
 mooseApp = /^(.*)-(opt|dbg|oprof|devel)$/
@@ -500,23 +497,26 @@ module.exports =
 
     loop
       # test the current line for block markers
-      if blockOpenTop.test line
-        configPath.unshift(blockOpenTop.exec(line)[1])
-        break
+      if blockTagContent.test line
+        tagContent = blockTagContent.exec(line)[1].split('/')
 
-      if blockOpenOneLevel.test line
-        depth--
-        if level == 0
-          configPath.unshift(blockOpenOneLevel.exec(line)[1])
-        else
-          level--
+        if tagContent.length == 1
+          if tagContent[0] == ''
+            return {configPath: []}
+          else
+            configPath.unshift(tagContent[0])
+            break
 
-      if blockCloseTop.test line
-        return {configPath: []}
-
-      if blockCloseOneLevel.test line
-        depth++
-        level++
+        if tagContent.length == 2
+          if tagContent[0] == '.'
+            depth--
+            if level == 0
+              configPath.unshift(tagContent[1])
+            else
+              level--
+          if tagContent[0] == '..' and tagContent[1] == ''
+            depth++
+            level++
 
       # test for a type parameter
       if blockType.test(line) and level == 0 and depth == 0 and type == null
