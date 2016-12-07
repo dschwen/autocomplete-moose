@@ -1,3 +1,6 @@
+## 0.22.1
+* Improvement: Allow blocks with more than one path element.
+
 ## 0.21.0
 * Improvement: Add `*-devel` executable support.
 

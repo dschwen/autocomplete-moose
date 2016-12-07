@@ -12,7 +12,7 @@ parameterCompletion = /^\s*[^\s#=\]]*$/
 typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/
 otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/
 
-blockTagContent = /\[([^\]]*)\]/
+blockTagContent = /^\s*\[([^\]]*)\]/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
 
 mooseApp = /^(.*)-(opt|dbg|oprof|devel)$/
