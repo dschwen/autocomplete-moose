@@ -12,8 +12,15 @@ parameterCompletion = /^\s*[^\s#=\]]*$/
 typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/
 otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/
 
+# new regexp
 blockTagContent = /^\s*\[([^\]]*)\]/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
+
+# legacy regexp
+blockOpenTop = /\[([^.\/][^\/]*)\]/
+blockCloseTop = /\[\]/
+blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
+blockCloseOneLevel = /\[\.\.\/\]/
 
 mooseApp = /^(.*)-(opt|dbg|oprof|devel)$/
 stdVector = /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/
