@@ -623,7 +623,10 @@ module.exports =
     mooseYAML = new Promise (resolve, reject) ->
       yamlData = ''
 
-      moose = cp.spawn appFile, ['--yaml'], {stdio:['pipe','pipe','ignore']}
+      args = ['--yaml']
+      if atom.config.get "autocomplete-moose.allowTestObjects"
+        args.push '--allow-test-objects'
+      moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
 
       moose.stdout.on 'data', (data) ->
         yamlData += data

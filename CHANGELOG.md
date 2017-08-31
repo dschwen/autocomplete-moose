@@ -1,5 +1,8 @@
-## 0.22.1
-* Improvement: Allow blocks with more than one path element.
+## 0.22.0
+* Improvement: Add option to show test object in suggestion list (enabled by default)
+
+## 0.21.1
+* Improvement: Allow blocks with more than one path element (not quite ready).
 
 ## 0.21.0
 * Improvement: Add `*-devel` executable support.
