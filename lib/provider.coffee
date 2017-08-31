@@ -14,6 +14,7 @@ otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]
 
 # new regexp
 blockTagContent = /^\s*\[([^\]]*)\]/
+blockMultiTagContent = /^\s*\[(.*)/
 blockType = /^\s*type\s*=\s*([^#\s]+)/
 
 # legacy regexp
@@ -515,6 +516,7 @@ module.exports =
       if blockTagContent.test line
         tagContent = blockTagContent.exec(line)[1].split('/')
 
+        # [] top-level close
         if tagContent.length == 1 && tagContent[0] == ''
           return {configPath: []}
 
@@ -527,8 +529,21 @@ module.exports =
         if tagContent[0] != '.' and tagContent[0] != '..'
           break
 
+#       else if blockMultiTagContent.test line
+#         tagContent = blockMultiTagContent.exec(line)[1].split('/')
+#         tagContent.pop()
+#
+#         # prepend the tagContent entries to configPath
+#         Array.prototype.unshift.apply(configPath ,tagContent)
+#         for typePath in types
+#           Array.prototype.unshift.apply(typePath[0] ,tagContent)
+#
+#         console.log tagContent, configPath
+#         if tagContent[0] != '.' and tagContent[0] != '..'
+#           break
+
       # test for a type parameter
-      if blockType.test(line)
+      else if blockType.test(line)
         types.push [[], blockType.exec(line)[1]]
 
       # decrement row and fetch line (if we have not found a path we assume
