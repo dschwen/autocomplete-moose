@@ -1,4 +1,7 @@
 ## 0.22.0
+* Improvement: Prevent completions for top level blocks from appearing multiple times in the list
+
+## 0.22.0
 * Improvement: Add option to show test object in suggestion list (enabled by default)
 
 ## 0.21.1

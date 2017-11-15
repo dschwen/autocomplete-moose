@@ -370,10 +370,11 @@ module.exports =
               snippet: blockPrefix + '${1:name}' + blockPostfix
             }
           else if completion != ''
-            completions.push {
-              text: blockPrefix + completion + blockPostfix
-              displayText: completion
-            }
+            if (completions.findIndex (c) -> c.displayText == completion) < 0
+              completions.push {
+                text: blockPrefix + completion + blockPostfix
+                displayText: completion
+              }
 
     # complete for type parameter
     else if @isTypeParameter(line)
@@ -714,7 +715,7 @@ module.exports =
           w.syntax = result.syntax
 
         .catch ->
-          # TODO: rebuild syntax if loading the cahce fails
+          # TODO: rebuild syntax if loading the cache fails
           atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
           delete syntaxWarehouse[appPath]
           fs.unlink(cacheFile)
