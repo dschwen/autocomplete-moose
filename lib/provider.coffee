@@ -679,7 +679,7 @@ module.exports =
     # we return finishSyntaxSetup, but we chain a promise onto it to write out
     # the cache file
     finishSyntaxSetup.then (result) ->
-      fs.writeFile cacheFile, JSON.stringify result
+      fs.writeFile cacheFile, JSON.stringify(result), ->
 
     w.promise = finishSyntaxSetup
 
