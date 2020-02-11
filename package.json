@@ -4,7 +4,7 @@
   "description": "MOOSE finite element framework input file autocompletions",
   "main": "./lib/main",
   "license": "MIT",
-  "repository": "https://github.com/dschwen/autocomplete-moose",
+  "repository": "git@github.com:dschwen/autocomplete-moose.git",
   "engines": {
     "atom": ">=0.174.0 <2.0.0"
   },
