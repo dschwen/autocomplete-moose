@@ -4,6 +4,13 @@ path = require 'path'
 yaml = require 'js-yaml'
 readline = require 'readline'
 
+Parser = require 'tree-sitter'
+Hit = require 'tree-sitter-hit'
+
+parser = new Parser();
+parser.setLanguage(Hit);
+tree = undefined
+
 emptyLine = /^\s*$/
 insideBlockTag = /^\s*\[([^\]#\s]*)$/
 
@@ -45,6 +52,9 @@ module.exports =
   inclusionPriority: 1
   excludeLowerPriority: true
 
+  # This will be suggested before the default provider, which has a suggestionPriority of 1.
+  suggestionPriority: 2
+
   # Tell autocomplete to fuzzy filter the results of getSuggestions(). We are
   # still filtering by the first character of the prefix in this provider for
   # efficiency.
@@ -78,11 +88,11 @@ module.exports =
       # still loading
       if 'promise' of w
         w.promise.then =>
-          @computeCompletion request, w
+          @prepareCompletion request, w
 
       # syntax is loaded
       else
-        @computeCompletion request, w
+        @prepareCompletion request, w
 
     # return a promise that gets fulfilled as soon as the syntax data is loaded
     else
@@ -95,7 +105,13 @@ module.exports =
           delete syntaxWarehouse[dir.appPath]
 
         # perform completion
-        @computeCompletion request, syntaxWarehouse[dir.appPath]
+        @prepareCompletion request, syntaxWarehouse[dir.appPath]
+
+  prepareCompletion: (request, w) ->
+    # asynchronous tree update
+    parser.parseTextBuffer(request.editor.getBuffer().buffer, tree).then (newtree) =>
+      tree = newtree
+      @computeCompletion request, w
 
   recurseYAMLNode: (node, configPath, matchList) ->
     yamlPath = node.name.substr(1).split '/'
@@ -508,62 +524,53 @@ module.exports =
     configPath = []
     types = []
 
-    normalize = (configPath) ->
-      return path.join.apply(undefined, configPath).split(path.sep)
+    recurseCurrentConfigPath = (node, sourcePath = []) ->
+      for c in node.children
+        if c.type != 'top_block' && c.type != 'block'
+          continue
 
-    loop
-      # test the current line for block markers
-      if blockTagContent.test line
-        tagContent = blockTagContent.exec(line)[1].split('/')
+        # console.log  c.text
+        # check if we are inside a block or top_block
+        cs = c.startPosition
+        ce = c.endPosition
+        console.log cs, ce, position
 
-        # [] top-level close
-        if tagContent.length == 1 && tagContent[0] == ''
-          return {configPath: []}
+        # outside row range
+        if position.row < cs.row || position.row > ce.row
+          continue
 
-        else
-          # prepend the tagContent entries to configPath
-          Array.prototype.unshift.apply(configPath ,tagContent)
-          for typePath in types
-            Array.prototype.unshift.apply(typePath[0] ,tagContent)
+        # in starting row but before starting column
+        if position.row == cs.row && position.column < cs.column
+          continue
 
-        if tagContent[0] != '.' and tagContent[0] != '..'
-          break
+        # in ending row but after ending column
+        if position.row == ce.row && position.column >= ce.column
+          continue
 
-#       else if blockMultiTagContent.test line
-#         tagContent = blockMultiTagContent.exec(line)[1].split('/')
-#         tagContent.pop()
-#
-#         # prepend the tagContent entries to configPath
-#         Array.prototype.unshift.apply(configPath ,tagContent)
-#         for typePath in types
-#           Array.prototype.unshift.apply(typePath[0] ,tagContent)
-#
-#         console.log tagContent, configPath
-#         if tagContent[0] != '.' and tagContent[0] != '..'
-#           break
+        # if the block does not contain a valid path subnode we give up
+        if c.children.length < 2 || c.children[1].type != 'block_path'
+          return null
 
-      # test for a type parameter
-      else if blockType.test(line)
-        types.push [[], blockType.exec(line)[1]]
+        name = c.children[1].text
+        sourcePath.push(name.replace(/^\.\//, ''))
+        return recurseCurrentConfigPath c, sourcePath
 
-      # decrement row and fetch line (if we have not found a path we assume
-      # we are at the top level)
-      row -= 1
-      if row < 0
-        return {configPath: []}
-      line = editor.lineTextForBufferRow row
+      return [node, sourcePath]
 
-      # remove comments
-      commentCharPos = line.indexOf '#'
-      if commentCharPos >= 0
-        line = line.substr 0, commentCharPos
 
-    configPath = normalize configPath
-    type = null
-    for typePath in types
-      if normalize(typePath[0]).join('/') == configPath.join('/')
-        type = typePath[1]
-    {configPath: configPath, explicitType: type}
+    [node, sourcePath] =recurseCurrentConfigPath tree.rootNode
+    ret = {configPath: sourcePath, explicitType: null}
+
+    # found a block we can check for a type parameter
+    if node != null
+      for c in node.children
+        if c.type != 'parameter_definition' || c.children.length < 3 || c.children[0].text != 'type'
+          continue
+        ret.explicitType = c.children[2].text
+        break
+
+    # return value
+    ret
 
   findApp: (filePath) ->
     if not filePath?
