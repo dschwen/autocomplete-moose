@@ -145,7 +145,7 @@ module.exports =
 
     # sort least fuzz first and return minimum fuzz match
     matchList.sort (a, b) ->
-      a.fuzz > b.fuzz
+      a.fuzz - b.fuzz
     return matchList[0]
 
   # fetch a list of valid parameters for the current config path
@@ -157,7 +157,6 @@ module.exports =
     # find yaml node that matches the current config path best
     {node, fuzzyOnLast} = @matchYAMLNode configPath, w
     searchNodes = [node]
-
     # bail out if we are in an invalid path
     return [] unless node?
 

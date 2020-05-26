@@ -1,3 +1,7 @@
+## 0.24.0
+* Bug fix: Sorting the matched syntax path by specificity was broken, resulting in missing parameters. Fixed.
+* Improvement: Updated dependencies with reported security issues.
+
 ## 0.22.0
 * Improvement: Prevent completions for top level blocks from appearing multiple times in the list
 
