@@ -19,13 +19,7 @@ parameterCompletion = /^\s*[^\s#=\]]*$/
 typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/
 otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/
 
-# new regexp
-blockTagContent = /^\s*\[([^\]]*)\]/
-blockMultiTagContent = /^\s*\[(.*)/
-blockType = /^\s*type\s*=\s*([^#\s]+)/
-
 # legacy regexp
-blockOpenTop = /\[([^.\/][^\/]*)\]/
 blockCloseTop = /\[\]/
 blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
 blockCloseOneLevel = /\[\.\.\/\]/
@@ -347,6 +341,7 @@ module.exports =
 
     # for empty [] we suggest blocks
     if @isOpenBracketPair(line)
+      console.log line,tree
       # get the postfix (to determine if we need to append a ] or not)
       postLine = editor.getTextInRange([bufferPosition, [bufferPosition.row, bufferPosition.column+1]])
       blockPostfix = if postLine.length > 0 and postLine[0] == ']' then '' else  ']'
