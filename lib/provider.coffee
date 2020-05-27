@@ -592,7 +592,7 @@ module.exports =
       if matches.length > 0
         # return newest application
         matches.sort (a, b) ->
-          a.appDate < b.appDate
+          b.appDate - a.appDate
 
         appDirs[filePath] = matches[0]
         return appDirs[filePath]
