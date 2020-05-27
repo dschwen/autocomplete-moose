@@ -526,14 +526,12 @@ module.exports =
 
     recurseCurrentConfigPath = (node, sourcePath = []) ->
       for c in node.children
-        if c.type != 'top_block' && c.type != 'block'
+        if c.type != 'top_block' && c.type != 'block' && c.type != 'ERROR'
           continue
 
-        # console.log  c.text
         # check if we are inside a block or top_block
         cs = c.startPosition
         ce = c.endPosition
-        console.log cs, ce, position
 
         # outside row range
         if position.row < cs.row || position.row > ce.row
@@ -551,14 +549,23 @@ module.exports =
         if c.children.length < 2 || c.children[1].type != 'block_path'
           return null
 
-        name = c.children[1].text
-        sourcePath.push(name.replace(/^\.\//, ''))
+        # first block_path node
+        if c.type != 'ERROR'
+          sourcePath = sourcePath.concat(c.children[1].text.replace(/^\.\//, '').split('/'))
+
+        # if we are in an ERROR block (unclosed) we should try to pick more path elements
+        else
+          for c2 in c.children
+            if c2.type != 'block_path' || c2.startPosition.row >= position.row
+              continue
+            sourcePath = sourcePath.concat(c2.text.replace(/^\.\//, '').split('/'))
+
         return recurseCurrentConfigPath c, sourcePath
 
       return [node, sourcePath]
 
 
-    [node, sourcePath] =recurseCurrentConfigPath tree.rootNode
+    [node, sourcePath] = recurseCurrentConfigPath tree.rootNode
     ret = {configPath: sourcePath, explicitType: null}
 
     # found a block we can check for a type parameter
