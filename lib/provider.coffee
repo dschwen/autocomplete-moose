@@ -341,7 +341,10 @@ module.exports =
 
     # for empty [] we suggest blocks
     if @isOpenBracketPair(line)
-      console.log line,tree
+      # get a partial path
+      partialPath = line.match(insideBlockTag)[1].replace(/^\.\//, '').split('/');
+      partialPath.pop()
+
       # get the postfix (to determine if we need to append a ] or not)
       postLine = editor.getTextInRange([bufferPosition, [bufferPosition.row, bufferPosition.column+1]])
       blockPostfix = if postLine.length > 0 and postLine[0] == ']' then '' else  ']'
@@ -350,13 +353,16 @@ module.exports =
       blockPrefix = if configPath.length > 0 then '[./' else '['
 
       # add block close tag to suggestions
-      if configPath.length > 0
+      if configPath.length > 0 && partialPath.length == 0
         completions.push {
           text: '[../' + blockPostfix
           displayText: '..'
         }
 
+      configPath = configPath.concat(partialPath)
+
       # go over all entries in the syntax file to find a match
+      addedWildcard = false
       for suggestionText in w.syntax
         suggestion = suggestionText.split '/'
 
@@ -371,14 +377,16 @@ module.exports =
               break
 
         if match
-          completion = suggestion[configPath.length]
+          completion = partialPath.concat(suggestion[configPath.length]).join '/'
 
           # add to suggestions if it is a new suggestion
           if completion == '*'
-            completions.push {
-              displayText: '*'
-              snippet: blockPrefix + '${1:name}' + blockPostfix
-            }
+            if !addedWildcard
+              completions.push {
+                displayText: '*'
+                snippet: blockPrefix + '${1:name}' + blockPostfix
+              }
+              addedWildcard = true
           else if completion != ''
             if (completions.findIndex (c) -> c.displayText == completion) < 0
               completions.push {
@@ -542,10 +550,12 @@ module.exports =
 
         # if the block does not contain a valid path subnode we give up
         if c.children.length < 2 || c.children[1].type != 'block_path'
-          return null
+          return [node.parent, sourcePath]
 
         # first block_path node
         if c.type != 'ERROR'
+          if c.children[1].startPosition.row >= position.row
+            continue
           sourcePath = sourcePath.concat(c.children[1].text.replace(/^\.\//, '').split('/'))
 
         # if we are in an ERROR block (unclosed) we should try to pick more path elements
