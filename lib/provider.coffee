@@ -542,7 +542,7 @@ module.exports =
           continue
 
         # in ending row but after ending column
-        if position.row == ce.row && position.column >= ce.column
+        if position.row == ce.row && position.column > ce.column
           continue
 
         # if the block does not contain a valid path subnode we give up
