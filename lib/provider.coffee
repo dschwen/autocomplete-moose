@@ -9,6 +9,7 @@ Hit = require 'tree-sitter-hit'
 
 parser = new Parser();
 parser.setLanguage(Hit);
+parser.inUse = false
 tree = undefined
 
 emptyLine = /^\s*$/
@@ -102,9 +103,15 @@ module.exports =
         @prepareCompletion request, syntaxWarehouse[dir.appPath]
 
   prepareCompletion: (request, w) ->
+    # bail early if the parser is still in use
+    if parser.inUse
+      return
+
     # asynchronous tree update
+    parser.inUse = true
     parser.parseTextBuffer(request.editor.getBuffer().buffer, tree).then (newtree) =>
       tree = newtree
+      parser.inUse = false
       @computeCompletion request, w
 
   recurseYAMLNode: (node, configPath, matchList) ->
