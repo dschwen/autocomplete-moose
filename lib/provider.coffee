@@ -504,13 +504,6 @@ module.exports =
   isParameterCompletion: (line) ->
     parameterCompletion.test line
 
-  # drop all comments from a given input file line
-  dropComment: (line) ->
-    cpos = line.indexOf('#')
-    if cpos >= 0
-      line = line.substr(cpos)
-    line
-
   # add the /Type (or /<type>/Type for top level blocks) pseudo path
   # if we are inside a typed block
   getTypedPath: (configPath, type, fuzzyOnLast) ->
@@ -529,10 +522,6 @@ module.exports =
 
   # determine the active input file path at the current position
   getCurrentConfigPath: (editor, position, addTypePath) ->
-    row = position.row
-    line = editor.lineTextForBufferRow(row).substr(0, position.column)
-    configPath = []
-    types = []
 
     recurseCurrentConfigPath = (node, sourcePath = []) ->
       for c in node.children
