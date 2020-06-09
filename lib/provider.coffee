@@ -1,7 +1,6 @@
 fs = require 'fs-plus'
 cp = require 'child_process'
 path = require 'path'
-yaml = require 'js-yaml'
 readline = require 'readline'
 
 Parser = require 'tree-sitter'
@@ -37,7 +36,7 @@ suggestionIcon = {
 }
 
 # each moose input file in the project dir could have its own moose app and
-# yaml/syntax associated this table points to the app dir for each editor path
+# json/syntax associated this table points to the app dir for each editor path
 appDirs = {}
 syntaxWarehouse = {}
 
@@ -114,7 +113,7 @@ module.exports =
       parser.inUse = false
       @computeCompletion request, w
 
-  recurseYAMLNode: (node, configPath, matchList) ->
+  recurseSyntaxNode: (node, configPath, matchList) ->
     yamlPath = node.name.substr(1).split '/'
 
     # no point in recursing deeper
@@ -147,15 +146,15 @@ module.exports =
 
     # recurse deeper otherwise
     else
-      @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
+      @recurseSyntaxNode subNode, configPath, matchList for subNode in node.subblocks or []
 
-  matchYAMLNode: (configPath, w) ->
-    # we need to match this to one node in the yaml tree. multiple matches may
+  matchSyntaxNode: (configPath, w) ->
+    # we need to match this to one node in the JSON tree. multiple matches may
     # occur we will later select the most specific match
     matchList = []
 
-    for root in w.yaml
-      @recurseYAMLNode root, configPath, matchList
+    for root in w.json.blocks
+      @recurseSyntaxNode root, configPath, matchList
 
     # no match found
     return {node: null, fuzzyOnLast: null} if matchList.length == 0
@@ -172,7 +171,7 @@ module.exports =
     paramList = []
 
     # find yaml node that matches the current config path best
-    {node, fuzzyOnLast} = @matchYAMLNode configPath, w
+    {node, fuzzyOnLast} = @matchSyntaxNode configPath, w
     searchNodes = [node]
     # bail out if we are in an invalid path
     return [] unless node?
@@ -183,7 +182,7 @@ module.exports =
         explicitType = param.default if param.name == 'type'
 
     if explicitType?
-      result = @matchYAMLNode @getTypedPath(configPath, explicitType, fuzzyOnLast), w
+      result = @matchSyntaxNode @getTypedPath(configPath, explicitType, fuzzyOnLast), w
       if not result?
         return []
       else
@@ -407,14 +406,14 @@ module.exports =
       originalConfigPath = configPath[..]
 
       # find yaml node that matches the current config path best
-      {node, fuzzyOnLast}  = @matchYAMLNode configPath, w
+      {node, fuzzyOnLast}  = @matchSyntaxNode configPath, w
       if fuzzyOnLast
         configPath.pop()
       else
         configPath.push '<type>'
 
       # find yaml node that matches the current config path best
-      {node, fuzzyOnLast}  = @matchYAMLNode configPath, w
+      {node, fuzzyOnLast}  = @matchSyntaxNode configPath, w
       if node?
         # iterate over subblocks and add final yaml path element to suggestions
         for subNode in node.subblocks or []
@@ -634,70 +633,50 @@ module.exports =
     # open notification about syntax generation
     workingNotification = atom.notifications.addInfo 'Rebuilding MOOSE syntax data.', {dismissable: true}
 
-    # rebuild the syntax by running moose with --syntax and --yaml
-    mooseYAML = new Promise (resolve, reject) ->
-      yamlData = ''
+    # rebuild the syntax by running moose with --json
+    mooseJSON = new Promise (resolve, reject) ->
+      jsonData = ''
 
-      args = ['--yaml']
+      args = ['--json']
       if atom.config.get "autocomplete-moose.allowTestObjects"
         args.push '--allow-test-objects'
       moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
 
       moose.stdout.on 'data', (data) ->
-        yamlData += data
+        jsonData += data
 
       moose.on 'close',  (code, signal) ->
         if code is 0
-          resolve yamlData
+          resolve jsonData
         else
-          reject {code: code, output: yamlData, appFile: appFile}
+          reject {code: code, signal: signal, output: jsonData, appFile: appFile}
 
     .then (result) ->
-      beginMarker = '**START YAML DATA**\n'
-      endMarker = '**END YAML DATA**\n'
+      beginMarker = '**START JSON DATA**\n'
+      endMarker = '**END JSON DATA**\n'
       begin = result.indexOf beginMarker
       end= result.lastIndexOf endMarker
 
       throw 'markers not found' if begin < 0 or end < begin
 
-      yaml.safeLoad result[begin+beginMarker.length..end-1]
+      JSON.parse result[begin+beginMarker.length..end-1]
 
-    mooseSyntax = new Promise (resolve, reject) ->
-      cp.execFile appFile, ['--syntax'], (error, stdout, stderr) ->
-        reject error if error?
+    .then (result) ->
+      w.json = result
+      fs.writeFile cacheFile, JSON.stringify(w.json), ->
 
-        lines = stdout.toString().split('\n')
-        begin = lines.indexOf '**START SYNTAX DATA**'
-        end = lines.indexOf '**END SYNTAX DATA**'
+      workingNotification.dismiss()
+      delete w.promise
 
-        reject('marker') if begin < 0 or end <= begin
-        resolve lines[begin+1..end-1]
+      w
 
-    # promise that is fulfilled when all processes are done
-    loadFiles = Promise.all [
-      mooseSyntax
-      mooseYAML
-    ]
-
-    loadFiles.catch (error) ->
+    .catch (error) ->
       workingNotification.dismiss()
       atom.notifications.addError 'Failed to build MOOSE syntax data.', dismissable: true
 
-    finishSyntaxSetup = loadFiles.then (result) ->
-      workingNotification.dismiss()
-      delete w.promise
-      w.syntax = result[0]
-      w.yaml   = result[1]
-      w
+    w.promise = mooseJSON
 
-    # we return finishSyntaxSetup, but we chain a promise onto it to write out
-    # the cache file
-    finishSyntaxSetup.then (result) ->
-      fs.writeFile cacheFile, JSON.stringify(result), ->
-
-    w.promise = finishSyntaxSetup
-
-  # fetch YAML and syntax data
+  # fetch JSON syntax data
   loadSyntax: (app) ->
     {appPath, appName, appFile, appDate} = app
 
@@ -725,14 +704,13 @@ module.exports =
 
         .then (result) ->
           delete w.promise
-          w.yaml = result.yaml
-          w.syntax = result.syntax
+          w.json = result
 
         .catch ->
           # TODO: rebuild syntax if loading the cache fails
           atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
           delete syntaxWarehouse[appPath]
-          fs.unlink(cacheFile)
+          fs.unlink cacheFile
 
         w.promise = loadCache
         return loadCache

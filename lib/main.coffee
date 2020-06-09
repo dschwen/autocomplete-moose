@@ -13,7 +13,7 @@ module.exports =
     fallbackMooseDir:
       type: 'string'
       default: ''
-      description: 'If no MOOSE executable is found in or above the current directory, search heare instead.'
+      description: 'If no MOOSE executable is found in or above the current directory, search here instead.'
 
   activate: (state) ->
     atom.commands.add 'atom-workspace', 'autocomplete-moose:clear-cache', => provider.clearCache()
