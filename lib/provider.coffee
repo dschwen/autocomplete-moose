@@ -54,6 +54,12 @@ module.exports =
   # efficiency.
   filterSuggestions: true
 
+  # include parameters marked as deprecated in the suggestions
+  hideDeprecatedParams: null
+
+  # offline syntax dump
+  offlineSyntax: null
+
   # Clear the cache for the app associated with current file.
   # This is made available as an atom command.
   clearCache: ->
@@ -71,7 +77,11 @@ module.exports =
     filePath = path.dirname request.editor.getPath()
 
     # lookup application for current input file (cached)
-    dir = @findApp filePath
+    if @offlineSyntax
+      dir = {appPath: @offlineSyntax, appName: null, appFile: null, appDate: null}
+    else
+      dir = @findApp filePath
+
     return [] if not dir?
 
     # check if the syntax is already loaded, currently loading,
@@ -93,10 +103,11 @@ module.exports =
       loaded = @loadSyntax dir
       loaded.then =>
         # watch executable
-        fs.watch dir.appFile, (event, filename) ->
-          # force rebuilding of syntax if executable changed
-          delete appDirs[filePath]
-          delete syntaxWarehouse[dir.appPath]
+        if dir.appFile?
+          fs.watch dir.appFile, (event, filename) ->
+            # force rebuilding of syntax if executable changed
+            delete appDirs[filePath]
+            delete syntaxWarehouse[dir.appPath]
 
         # perform completion
         @prepareCompletion request, syntaxWarehouse[dir.appPath]
@@ -355,14 +366,12 @@ module.exports =
 
     # suggest parameters
     else if @isParameterCompletion(line)
-      console.log @getParameters configPath, explicitType, w
 
       # loop over valid parameters
       for name, param of @getParameters configPath, explicitType, w
-        console.log name, param
 
         # skip deprecated params
-        if false and param.deprecated
+        if @hideDeprecatedParams and param.deprecated
           continue
 
         defaultValue = param.default or ''
@@ -535,28 +544,34 @@ module.exports =
 
   # rebuild syntax
   rebuildSyntax: (app, cacheFile, w) ->
-    {appFile} = app
+    {appPath, appName, appFile, appDate} = app
 
     # open notification about syntax generation
     workingNotification = atom.notifications.addInfo 'Rebuilding MOOSE syntax data.', {dismissable: true}
 
     # rebuild the syntax by running moose with --json
-    mooseJSON = new Promise (resolve, reject) ->
+    mooseJSON = new Promise (resolve, reject) =>
       jsonData = ''
 
-      args = ['--json']
-      if atom.config.get "autocomplete-moose.allowTestObjects"
-        args.push '--allow-test-objects'
-      moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
+      # either run moose or use the offlineSyntax file
+      if appFile?
+        args = ['--json']
+        if atom.config.get "autocomplete-moose.allowTestObjects"
+          args.push '--allow-test-objects'
+        moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
 
-      moose.stdout.on 'data', (data) ->
-        jsonData += data
+        moose.stdout.on 'data', (data) ->
+          jsonData += data
 
-      moose.on 'close',  (code, signal) ->
-        if code is 0
-          resolve jsonData
-        else
-          reject {code: code, signal: signal, output: jsonData, appFile: appFile}
+        moose.on 'close',  (code, signal) ->
+          if code is 0
+            resolve jsonData
+          else
+            reject {text: 'Failed to run MOOSE to obtain syntax data', code: code, signal: signal, output: jsonData, appFile: appFile}
+      else
+        fs.readFile appPath, 'utf8', (error, content) =>
+          reject {text: 'Failed to load offline syntax file', name: @offlineSyntax } if error?
+          resolve content
 
     .then (result) ->
       beginMarker = '**START JSON DATA**\n'
@@ -570,7 +585,8 @@ module.exports =
 
     .then (result) ->
       w.json = result
-      fs.writeFile cacheFile, JSON.stringify(w.json), ->
+      if cacheFile?
+        fs.writeFile cacheFile, JSON.stringify(w.json), ->
 
       workingNotification.dismiss()
       delete w.promise
@@ -579,7 +595,8 @@ module.exports =
 
     .catch (error) ->
       workingNotification.dismiss()
-      atom.notifications.addError 'Failed to build MOOSE syntax data.', dismissable: true
+      debugger
+      atom.notifications.addError error.name or error, dismissable: true
 
     w.promise = mooseJSON
 
@@ -587,39 +604,41 @@ module.exports =
   loadSyntax: (app) ->
     {appPath, appName, appFile, appDate} = app
 
-    # we store syntax data here:
-    cacheDir = path.join __dirname, '..', 'cache'
-    fs.makeTreeSync cacheDir
-    cacheFile = path.join cacheDir, "#{appName}.json"
-
     # prepare entry in the syntax warehouse
     w = syntaxWarehouse[appPath] = {}
 
-    # see if the cache file exists
-    if fs.existsSync cacheFile
-      cacheDate = fs.statSync(cacheFile).mtime.getTime()
+    # do not cache offlineSyntax
+    if appName
+      # we cache syntax data here
+      cacheDir = path.join __dirname, '..', 'cache'
+      fs.makeTreeSync cacheDir
+      cacheFile = path.join cacheDir, "#{appName}.json"
 
-      # if the cacheFile is newer than the app compile date we use the cache
-      if cacheDate > appDate
-        # return chained promises to load and parse the cached syntax
-        loadCache = new Promise (resolve, reject) ->
-          fs.readFile cacheFile, 'utf8', (error, content) ->
-            reject() if error?
-            resolve content
+      # see if the cache file exists
+      if fs.existsSync cacheFile
+        cacheDate = fs.statSync(cacheFile).mtime.getTime()
 
-        .then JSON.parse
+        # if the cacheFile is newer than the app compile date we use the cache
+        if cacheDate > appDate
+          # return chained promises to load and parse the cached syntax
+          loadCache = new Promise (resolve, reject) ->
+            fs.readFile cacheFile, 'utf8', (error, content) ->
+              reject() if error?
+              resolve content
 
-        .then (result) ->
-          delete w.promise
-          w.json = result
+          .then JSON.parse
 
-        .catch ->
-          # TODO: rebuild syntax if loading the cache fails
-          atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
-          delete syntaxWarehouse[appPath]
-          fs.unlink cacheFile
+          .then (result) ->
+            delete w.promise
+            w.json = result
 
-        w.promise = loadCache
-        return loadCache
+          .catch ->
+            # TODO: rebuild syntax if loading the cache fails
+            atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
+            delete syntaxWarehouse[appPath]
+            fs.unlink cacheFile
+
+          w.promise = loadCache
+          return loadCache
 
     @rebuildSyntax app, cacheFile, w
