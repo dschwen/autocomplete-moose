@@ -113,86 +113,57 @@ module.exports =
       parser.inUse = false
       @computeCompletion request, w
 
-  recurseSyntaxNode: (node, configPath, matchList) ->
-    yamlPath = node.name.substr(1).split '/'
+  # get the node in the JSON stucture for the current block level
+  getSyntaxNode: (configPath, w) ->
+    # no parameters at the root
+    if configPath.length == 0
+      return undefiend
 
-    # no point in recursing deeper
-    return if yamlPath.length > configPath.length
+    # traverse subblocks
+    b = w.json.blocks[configPath[0]]
+    for p in configPath[1..]
+      b = b?.subblocks?[p] or b?.star
+      unless b?
+        return undefined
+    b
 
-    # compare paths if we are at the correct level
-    if yamlPath.length == configPath.length
-      fuzz = 0
-      match = true
-      fuzzyOnLast = false
+  # get a list of valid subblocks
+  getSubblocks: (configPath, w) ->
+    # get top level blocks
+    if configPath.length == 0
+      return Object.keys w.json.blocks
 
-      # TODO compare with specificity depending on '*'
-      for configPathElement, index in configPath
-        if yamlPath[index] == '*'
-          fuzz++
-          fuzzyOnLast = true
-        else if yamlPath[index] != configPathElement
-          match = false
-          break
-        else
-          fuzzyOnLast = false
+    # traverse subblocks
+    b = @getSyntaxNode configPath, w
+    ret = Object.keys(b?.subblocks || {})
+    if b?.star
+      ret.push '*'
 
-      # match found
-      if match
-        matchList.push {
-          fuzz: fuzz
-          node: node
-          fuzzyOnLast: fuzzyOnLast
-        }
+    return ret.sort()
 
-    # recurse deeper otherwise
-    else
-      @recurseSyntaxNode subNode, configPath, matchList for subNode in node.subblocks or []
+  # get a list of parameters for the current block
+  # if the type parameter is known add in class specific parameters
+  getParameters: (configPath, explicitType, w) ->
+    ret = {}
+    b = @getSyntaxNode configPath, w
 
-  matchSyntaxNode: (configPath, w) ->
-    # we need to match this to one node in the JSON tree. multiple matches may
-    # occur we will later select the most specific match
-    matchList = []
+    # handle block level action parameters first
+    for n of b?.actions
+      Object.assign ret, b.actions[n].parameters
 
-    for root in w.json.blocks
-      @recurseSyntaxNode root, configPath, matchList
+    # if the type is known add the specific parameters
+    Object.assign ret, b?.subblock_types?[explicitType]?.parameters
 
-    # no match found
-    return {node: null, fuzzyOnLast: null} if matchList.length == 0
+    ret
 
-    # sort least fuzz first and return minimum fuzz match
-    matchList.sort (a, b) ->
-      a.fuzz - b.fuzz
-    return matchList[0]
+  # get a list of possible completions for the type parameter at the current block level
+  getTypes: (configPath, w) ->
+    ret = []
+    b = @getSyntaxNode configPath, w
+    for n of b?.subblock_types
+      ret.push {text: n, description: b.subblock_types[n].description}
 
-  # fetch a list of valid parameters for the current config path
-  fetchParameterList: (configPath, explicitType, w) ->
-    # parameters cannot exist outside of top level blocks
-    return [] if configPath.length == 0
-    paramList = []
-
-    # find yaml node that matches the current config path best
-    {node, fuzzyOnLast} = @matchSyntaxNode configPath, w
-    searchNodes = [node]
-    # bail out if we are in an invalid path
-    return [] unless node?
-
-    # add typed node if either explicitly set in input or if a default is known
-    if not explicitType?
-      for param in node.parameters or []
-        explicitType = param.default if param.name == 'type'
-
-    if explicitType?
-      result = @matchSyntaxNode @getTypedPath(configPath, explicitType, fuzzyOnLast), w
-      if not result?
-        return []
-      else
-        searchNodes.unshift result.node
-
-    for node in searchNodes
-      if node?
-        paramList.push node.parameters...
-
-    paramList
+    ret
 
   # parse current file and gather subblocks of a given top block (Functions,
   # PostProcessors)
@@ -366,77 +337,33 @@ module.exports =
         }
 
       configPath = configPath.concat(partialPath)
-
-      # go over all entries in the syntax file to find a match
-      addedWildcard = false
-      for suggestionText in w.syntax
-        suggestion = suggestionText.split '/'
-
-        # check if the suggestion is a match
-        match = true
-        if suggestion.length <= configPath.length
-          match = false
-        else
-          for configPathElement, index in configPath
-            if suggestion[index] != '*' and suggestion[index] != configPathElement
-              match = false
-              break
-
-        if match
-          completion = partialPath.concat(suggestion[configPath.length]).join '/'
-
-          # add to suggestions if it is a new suggestion
-          if completion == '*'
-            if !addedWildcard
-              completions.push {
-                displayText: '*'
-                snippet: blockPrefix + '${1:name}' + blockPostfix
-              }
-              addedWildcard = true
-          else if completion != ''
-            if (completions.findIndex (c) -> c.displayText == completion) < 0
-              completions.push {
-                text: blockPrefix + completion + blockPostfix
-                displayText: completion
-              }
-
-    # complete for type parameter
-    else if @isTypeParameter(line)
-      # transform into a '<type>' pseudo path
-      originalConfigPath = configPath[..]
-
-      # find yaml node that matches the current config path best
-      {node, fuzzyOnLast}  = @matchSyntaxNode configPath, w
-      if fuzzyOnLast
-        configPath.pop()
-      else
-        configPath.push '<type>'
-
-      # find yaml node that matches the current config path best
-      {node, fuzzyOnLast}  = @matchSyntaxNode configPath, w
-      if node?
-        # iterate over subblocks and add final yaml path element to suggestions
-        for subNode in node.subblocks or []
-          completion = (subNode.name.split '/')[-1..][0]
-          completions.push {text: completion, description: subNode.description}
-      else
-        # special case where 'type' is an actual parameter
-        # (such as /Executioner/Quadrature)
-        # TODO factor out, see below
-        paramName = otherParameter.exec(line)[1]
-        for param in @fetchParameterList originalConfigPath, explicitType, w
-          if param.name == paramName
-            completions = @computeValueCompletion param, editor
-            break
+      for completion in @getSubblocks configPath, w
+        # add to suggestions if it is a new suggestion
+        if completion == '*'
+          if !addedWildcard
+            completions.push {
+              displayText: '*'
+              snippet: blockPrefix + '${1:name}' + blockPostfix
+            }
+            addedWildcard = true
+        else if completion != ''
+          if (completions.findIndex (c) -> c.displayText == completion) < 0
+            completions.push {
+              text: blockPrefix + [partialPath..., completion].join('/') + blockPostfix
+              displayText: completion
+            }
 
     # suggest parameters
     else if @isParameterCompletion(line)
-      paramNamesFound = []
+      console.log @getParameters configPath, explicitType, w
 
       # loop over valid parameters
-      for param in @fetchParameterList configPath, explicitType, w
-        continue if param.name in paramNamesFound
-        paramNamesFound.push param.name
+      for name, param of @getParameters configPath, explicitType, w
+        console.log name, param
+
+        # skip deprecated params
+        if false and param.deprecated
+          continue
 
         defaultValue = param.default or ''
         defaultValue = "'#{defaultValue}'" if defaultValue.indexOf(' ') >= 0
@@ -448,10 +375,10 @@ module.exports =
         icon =
           if param.name == 'type'
             suggestionIcon['type']
-          else if param.required == 'Yes'
+          else if param.required
             suggestionIcon['required']
           else
-            if param.default != ''
+            if param.default?
               suggestionIcon['hasDefault']
             else
               suggestionIcon['noDefault']
@@ -465,19 +392,24 @@ module.exports =
 
     # complete for other parameter values
     else if !!(match = otherParameter.exec(line))
-      # TODO factor out, see above
       paramName = match[1]
       isQuoted = match[2][0] == "'"
       hasSpace = !!match[3]
-      for param in @fetchParameterList configPath, explicitType, w
-        if param.name == paramName
-          completions = @computeValueCompletion param, editor, isQuoted, hasSpace
-          break
+      param = (@getParameters configPath, explicitType, w)[paramName]
+      unless param?
+        return []
+
+      # this takes care of 'broken' type parameters like Executioner/Qudadrature/type
+      if paramName == 'type' and param.cpp_type == 'std::string'
+        completions = @getTypes configPath, w
+      else
+        completions = @computeValueCompletion param, editor, isQuoted, hasSpace
 
     # set the custom prefix
     for completion in completions
       completion.replacementPrefix = prefix
 
+    console.log w
     completions
 
   onDidInsertSuggestion: ({editor, suggestion}) ->
@@ -486,41 +418,16 @@ module.exports =
   triggerAutocomplete: (editor) ->
     atom.commands.dispatch(atom.views.getView(editor), 'autocomplete-plus:activate', {activatedManually: false})
 
-  # check if the current line is empty (in that case we complete for parameter
-  # names or block names)
-  isLineEmpty: (editor, position) ->
-    emptyLine.test(editor.lineTextForBufferRow(position.row))
-
   # check if there is an square bracket pair around the cursor
   isOpenBracketPair: (line) ->
     return insideBlockTag.test line
 
   # check if the current line is a type parameter
-  isTypeParameter: (line) ->
-    typeParameter.test line
-
-  # check if the current line is a type parameter
   isParameterCompletion: (line) ->
     parameterCompletion.test line
 
-  # add the /Type (or /<type>/Type for top level blocks) pseudo path
-  # if we are inside a typed block
-  getTypedPath: (configPath, type, fuzzyOnLast) ->
-    typedConfigPath = configPath[..]
-
-    if type? and type != ''
-      #if configPath.length > 1
-      if fuzzyOnLast
-        typedConfigPath[configPath.length-1] = type
-      else
-        typedConfigPath.push ['<type>', type]...
-      #else
-      #  typedConfigPath.push type
-
-    typedConfigPath
-
   # determine the active input file path at the current position
-  getCurrentConfigPath: (editor, position, addTypePath) ->
+  getCurrentConfigPath: (editor, position) ->
 
     recurseCurrentConfigPath = (node, sourcePath = []) ->
       for c in node.children
