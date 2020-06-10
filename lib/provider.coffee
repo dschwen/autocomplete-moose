@@ -418,7 +418,6 @@ module.exports =
     for completion in completions
       completion.replacementPrefix = prefix
 
-    console.log w
     completions
 
   onDidInsertSuggestion: ({editor, suggestion}) ->
@@ -461,7 +460,7 @@ module.exports =
 
         # if the block does not contain a valid path subnode we give up
         if c.children.length < 2 || c.children[1].type != 'block_path'
-          return [node.parent, sourcePath]
+          return [c.parent, sourcePath]
 
         # first block_path node
         if c.type != 'ERROR'
@@ -595,7 +594,6 @@ module.exports =
 
     .catch (error) ->
       workingNotification.dismiss()
-      debugger
       atom.notifications.addError error.name or error, dismissable: true
 
     w.promise = mooseJSON
