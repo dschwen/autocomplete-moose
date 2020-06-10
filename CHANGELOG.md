@@ -1,3 +1,9 @@
+## 1.1.0
+* Improvement: Use JSON syntax output from MOOSE
+
+## 1.0.0
+* Improvement: Use tree-sitter to parse the inputs
+
 ## 0.24.0
 * Bug fix: Sorting the matched syntax path by specificity was broken, resulting in missing parameters. Fixed.
 * Improvement: Updated dependencies with reported security issues.

@@ -1,7 +1,6 @@
 fs = require 'fs-plus'
 cp = require 'child_process'
 path = require 'path'
-yaml = require 'js-yaml'
 readline = require 'readline'
 
 Parser = require 'tree-sitter'
@@ -37,7 +36,7 @@ suggestionIcon = {
 }
 
 # each moose input file in the project dir could have its own moose app and
-# yaml/syntax associated this table points to the app dir for each editor path
+# json/syntax associated this table points to the app dir for each editor path
 appDirs = {}
 syntaxWarehouse = {}
 
@@ -54,6 +53,12 @@ module.exports =
   # still filtering by the first character of the prefix in this provider for
   # efficiency.
   filterSuggestions: true
+
+  # include parameters marked as deprecated in the suggestions
+  hideDeprecatedParams: null
+
+  # offline syntax dump
+  offlineSyntax: null
 
   # Clear the cache for the app associated with current file.
   # This is made available as an atom command.
@@ -72,7 +77,11 @@ module.exports =
     filePath = path.dirname request.editor.getPath()
 
     # lookup application for current input file (cached)
-    dir = @findApp filePath
+    if @offlineSyntax
+      dir = {appPath: @offlineSyntax, appName: null, appFile: null, appDate: null}
+    else
+      dir = @findApp filePath
+
     return [] if not dir?
 
     # check if the syntax is already loaded, currently loading,
@@ -94,10 +103,11 @@ module.exports =
       loaded = @loadSyntax dir
       loaded.then =>
         # watch executable
-        fs.watch dir.appFile, (event, filename) ->
-          # force rebuilding of syntax if executable changed
-          delete appDirs[filePath]
-          delete syntaxWarehouse[dir.appPath]
+        if dir.appFile?
+          fs.watch dir.appFile, (event, filename) ->
+            # force rebuilding of syntax if executable changed
+            delete appDirs[filePath]
+            delete syntaxWarehouse[dir.appPath]
 
         # perform completion
         @prepareCompletion request, syntaxWarehouse[dir.appPath]
@@ -114,86 +124,57 @@ module.exports =
       parser.inUse = false
       @computeCompletion request, w
 
-  recurseYAMLNode: (node, configPath, matchList) ->
-    yamlPath = node.name.substr(1).split '/'
+  # get the node in the JSON stucture for the current block level
+  getSyntaxNode: (configPath, w) ->
+    # no parameters at the root
+    if configPath.length == 0
+      return undefiend
 
-    # no point in recursing deeper
-    return if yamlPath.length > configPath.length
+    # traverse subblocks
+    b = w.json.blocks[configPath[0]]
+    for p in configPath[1..]
+      b = b?.subblocks?[p] or b?.star
+      unless b?
+        return undefined
+    b
 
-    # compare paths if we are at the correct level
-    if yamlPath.length == configPath.length
-      fuzz = 0
-      match = true
-      fuzzyOnLast = false
+  # get a list of valid subblocks
+  getSubblocks: (configPath, w) ->
+    # get top level blocks
+    if configPath.length == 0
+      return Object.keys w.json.blocks
 
-      # TODO compare with specificity depending on '*'
-      for configPathElement, index in configPath
-        if yamlPath[index] == '*'
-          fuzz++
-          fuzzyOnLast = true
-        else if yamlPath[index] != configPathElement
-          match = false
-          break
-        else
-          fuzzyOnLast = false
+    # traverse subblocks
+    b = @getSyntaxNode configPath, w
+    ret = Object.keys(b?.subblocks || {})
+    if b?.star
+      ret.push '*'
 
-      # match found
-      if match
-        matchList.push {
-          fuzz: fuzz
-          node: node
-          fuzzyOnLast: fuzzyOnLast
-        }
+    return ret.sort()
 
-    # recurse deeper otherwise
-    else
-      @recurseYAMLNode subNode, configPath, matchList for subNode in node.subblocks or []
+  # get a list of parameters for the current block
+  # if the type parameter is known add in class specific parameters
+  getParameters: (configPath, explicitType, w) ->
+    ret = {}
+    b = @getSyntaxNode configPath, w
 
-  matchYAMLNode: (configPath, w) ->
-    # we need to match this to one node in the yaml tree. multiple matches may
-    # occur we will later select the most specific match
-    matchList = []
+    # handle block level action parameters first
+    for n of b?.actions
+      Object.assign ret, b.actions[n].parameters
 
-    for root in w.yaml
-      @recurseYAMLNode root, configPath, matchList
+    # if the type is known add the specific parameters
+    Object.assign ret, b?.subblock_types?[explicitType]?.parameters
 
-    # no match found
-    return {node: null, fuzzyOnLast: null} if matchList.length == 0
+    ret
 
-    # sort least fuzz first and return minimum fuzz match
-    matchList.sort (a, b) ->
-      a.fuzz - b.fuzz
-    return matchList[0]
+  # get a list of possible completions for the type parameter at the current block level
+  getTypes: (configPath, w) ->
+    ret = []
+    b = @getSyntaxNode configPath, w
+    for n of b?.subblock_types
+      ret.push {text: n, description: b.subblock_types[n].description}
 
-  # fetch a list of valid parameters for the current config path
-  fetchParameterList: (configPath, explicitType, w) ->
-    # parameters cannot exist outside of top level blocks
-    return [] if configPath.length == 0
-    paramList = []
-
-    # find yaml node that matches the current config path best
-    {node, fuzzyOnLast} = @matchYAMLNode configPath, w
-    searchNodes = [node]
-    # bail out if we are in an invalid path
-    return [] unless node?
-
-    # add typed node if either explicitly set in input or if a default is known
-    if not explicitType?
-      for param in node.parameters or []
-        explicitType = param.default if param.name == 'type'
-
-    if explicitType?
-      result = @matchYAMLNode @getTypedPath(configPath, explicitType, fuzzyOnLast), w
-      if not result?
-        return []
-      else
-        searchNodes.unshift result.node
-
-    for node in searchNodes
-      if node?
-        paramList.push node.parameters...
-
-    paramList
+    ret
 
   # parse current file and gather subblocks of a given top block (Functions,
   # PostProcessors)
@@ -367,77 +348,31 @@ module.exports =
         }
 
       configPath = configPath.concat(partialPath)
-
-      # go over all entries in the syntax file to find a match
-      addedWildcard = false
-      for suggestionText in w.syntax
-        suggestion = suggestionText.split '/'
-
-        # check if the suggestion is a match
-        match = true
-        if suggestion.length <= configPath.length
-          match = false
-        else
-          for configPathElement, index in configPath
-            if suggestion[index] != '*' and suggestion[index] != configPathElement
-              match = false
-              break
-
-        if match
-          completion = partialPath.concat(suggestion[configPath.length]).join '/'
-
-          # add to suggestions if it is a new suggestion
-          if completion == '*'
-            if !addedWildcard
-              completions.push {
-                displayText: '*'
-                snippet: blockPrefix + '${1:name}' + blockPostfix
-              }
-              addedWildcard = true
-          else if completion != ''
-            if (completions.findIndex (c) -> c.displayText == completion) < 0
-              completions.push {
-                text: blockPrefix + completion + blockPostfix
-                displayText: completion
-              }
-
-    # complete for type parameter
-    else if @isTypeParameter(line)
-      # transform into a '<type>' pseudo path
-      originalConfigPath = configPath[..]
-
-      # find yaml node that matches the current config path best
-      {node, fuzzyOnLast}  = @matchYAMLNode configPath, w
-      if fuzzyOnLast
-        configPath.pop()
-      else
-        configPath.push '<type>'
-
-      # find yaml node that matches the current config path best
-      {node, fuzzyOnLast}  = @matchYAMLNode configPath, w
-      if node?
-        # iterate over subblocks and add final yaml path element to suggestions
-        for subNode in node.subblocks or []
-          completion = (subNode.name.split '/')[-1..][0]
-          completions.push {text: completion, description: subNode.description}
-      else
-        # special case where 'type' is an actual parameter
-        # (such as /Executioner/Quadrature)
-        # TODO factor out, see below
-        paramName = otherParameter.exec(line)[1]
-        for param in @fetchParameterList originalConfigPath, explicitType, w
-          if param.name == paramName
-            completions = @computeValueCompletion param, editor
-            break
+      for completion in @getSubblocks configPath, w
+        # add to suggestions if it is a new suggestion
+        if completion == '*'
+          if !addedWildcard
+            completions.push {
+              displayText: '*'
+              snippet: blockPrefix + '${1:name}' + blockPostfix
+            }
+            addedWildcard = true
+        else if completion != ''
+          if (completions.findIndex (c) -> c.displayText == completion) < 0
+            completions.push {
+              text: blockPrefix + [partialPath..., completion].join('/') + blockPostfix
+              displayText: completion
+            }
 
     # suggest parameters
     else if @isParameterCompletion(line)
-      paramNamesFound = []
 
       # loop over valid parameters
-      for param in @fetchParameterList configPath, explicitType, w
-        continue if param.name in paramNamesFound
-        paramNamesFound.push param.name
+      for name, param of @getParameters configPath, explicitType, w
+
+        # skip deprecated params
+        if @hideDeprecatedParams and param.deprecated
+          continue
 
         defaultValue = param.default or ''
         defaultValue = "'#{defaultValue}'" if defaultValue.indexOf(' ') >= 0
@@ -449,10 +384,10 @@ module.exports =
         icon =
           if param.name == 'type'
             suggestionIcon['type']
-          else if param.required == 'Yes'
+          else if param.required
             suggestionIcon['required']
           else
-            if param.default != ''
+            if param.default?
               suggestionIcon['hasDefault']
             else
               suggestionIcon['noDefault']
@@ -466,14 +401,18 @@ module.exports =
 
     # complete for other parameter values
     else if !!(match = otherParameter.exec(line))
-      # TODO factor out, see above
       paramName = match[1]
       isQuoted = match[2][0] == "'"
       hasSpace = !!match[3]
-      for param in @fetchParameterList configPath, explicitType, w
-        if param.name == paramName
-          completions = @computeValueCompletion param, editor, isQuoted, hasSpace
-          break
+      param = (@getParameters configPath, explicitType, w)[paramName]
+      unless param?
+        return []
+
+      # this takes care of 'broken' type parameters like Executioner/Qudadrature/type
+      if paramName == 'type' and param.cpp_type == 'std::string'
+        completions = @getTypes configPath, w
+      else
+        completions = @computeValueCompletion param, editor, isQuoted, hasSpace
 
     # set the custom prefix
     for completion in completions
@@ -487,52 +426,16 @@ module.exports =
   triggerAutocomplete: (editor) ->
     atom.commands.dispatch(atom.views.getView(editor), 'autocomplete-plus:activate', {activatedManually: false})
 
-  # check if the current line is empty (in that case we complete for parameter
-  # names or block names)
-  isLineEmpty: (editor, position) ->
-    emptyLine.test(editor.lineTextForBufferRow(position.row))
-
   # check if there is an square bracket pair around the cursor
   isOpenBracketPair: (line) ->
     return insideBlockTag.test line
 
   # check if the current line is a type parameter
-  isTypeParameter: (line) ->
-    typeParameter.test line
-
-  # check if the current line is a type parameter
   isParameterCompletion: (line) ->
     parameterCompletion.test line
 
-  # drop all comments from a given input file line
-  dropComment: (line) ->
-    cpos = line.indexOf('#')
-    if cpos >= 0
-      line = line.substr(cpos)
-    line
-
-  # add the /Type (or /<type>/Type for top level blocks) pseudo path
-  # if we are inside a typed block
-  getTypedPath: (configPath, type, fuzzyOnLast) ->
-    typedConfigPath = configPath[..]
-
-    if type? and type != ''
-      #if configPath.length > 1
-      if fuzzyOnLast
-        typedConfigPath[configPath.length-1] = type
-      else
-        typedConfigPath.push ['<type>', type]...
-      #else
-      #  typedConfigPath.push type
-
-    typedConfigPath
-
   # determine the active input file path at the current position
-  getCurrentConfigPath: (editor, position, addTypePath) ->
-    row = position.row
-    line = editor.lineTextForBufferRow(row).substr(0, position.column)
-    configPath = []
-    types = []
+  getCurrentConfigPath: (editor, position) ->
 
     recurseCurrentConfigPath = (node, sourcePath = []) ->
       for c in node.children
@@ -557,7 +460,7 @@ module.exports =
 
         # if the block does not contain a valid path subnode we give up
         if c.children.length < 2 || c.children[1].type != 'block_path'
-          return [node.parent, sourcePath]
+          return [c.parent, sourcePath]
 
         # first block_path node
         if c.type != 'ERROR'
@@ -640,112 +543,100 @@ module.exports =
 
   # rebuild syntax
   rebuildSyntax: (app, cacheFile, w) ->
-    {appFile} = app
+    {appPath, appName, appFile, appDate} = app
 
     # open notification about syntax generation
     workingNotification = atom.notifications.addInfo 'Rebuilding MOOSE syntax data.', {dismissable: true}
 
-    # rebuild the syntax by running moose with --syntax and --yaml
-    mooseYAML = new Promise (resolve, reject) ->
-      yamlData = ''
+    # rebuild the syntax by running moose with --json
+    mooseJSON = new Promise (resolve, reject) =>
+      jsonData = ''
 
-      args = ['--yaml']
-      if atom.config.get "autocomplete-moose.allowTestObjects"
-        args.push '--allow-test-objects'
-      moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
+      # either run moose or use the offlineSyntax file
+      if appFile?
+        args = ['--json']
+        if atom.config.get "autocomplete-moose.allowTestObjects"
+          args.push '--allow-test-objects'
+        moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
 
-      moose.stdout.on 'data', (data) ->
-        yamlData += data
+        moose.stdout.on 'data', (data) ->
+          jsonData += data
 
-      moose.on 'close',  (code, signal) ->
-        if code is 0
-          resolve yamlData
-        else
-          reject {code: code, output: yamlData, appFile: appFile}
+        moose.on 'close',  (code, signal) ->
+          if code is 0
+            resolve jsonData
+          else
+            reject {text: 'Failed to run MOOSE to obtain syntax data', code: code, signal: signal, output: jsonData, appFile: appFile}
+      else
+        fs.readFile appPath, 'utf8', (error, content) =>
+          reject {text: 'Failed to load offline syntax file', name: @offlineSyntax } if error?
+          resolve content
 
     .then (result) ->
-      beginMarker = '**START YAML DATA**\n'
-      endMarker = '**END YAML DATA**\n'
+      beginMarker = '**START JSON DATA**\n'
+      endMarker = '**END JSON DATA**\n'
       begin = result.indexOf beginMarker
       end= result.lastIndexOf endMarker
 
       throw 'markers not found' if begin < 0 or end < begin
 
-      yaml.safeLoad result[begin+beginMarker.length..end-1]
+      JSON.parse result[begin+beginMarker.length..end-1]
 
-    mooseSyntax = new Promise (resolve, reject) ->
-      cp.execFile appFile, ['--syntax'], (error, stdout, stderr) ->
-        reject error if error?
+    .then (result) ->
+      w.json = result
+      if cacheFile?
+        fs.writeFile cacheFile, JSON.stringify(w.json), ->
 
-        lines = stdout.toString().split('\n')
-        begin = lines.indexOf '**START SYNTAX DATA**'
-        end = lines.indexOf '**END SYNTAX DATA**'
-
-        reject('marker') if begin < 0 or end <= begin
-        resolve lines[begin+1..end-1]
-
-    # promise that is fulfilled when all processes are done
-    loadFiles = Promise.all [
-      mooseSyntax
-      mooseYAML
-    ]
-
-    loadFiles.catch (error) ->
-      workingNotification.dismiss()
-      atom.notifications.addError 'Failed to build MOOSE syntax data.', dismissable: true
-
-    finishSyntaxSetup = loadFiles.then (result) ->
       workingNotification.dismiss()
       delete w.promise
-      w.syntax = result[0]
-      w.yaml   = result[1]
+
       w
 
-    # we return finishSyntaxSetup, but we chain a promise onto it to write out
-    # the cache file
-    finishSyntaxSetup.then (result) ->
-      fs.writeFile cacheFile, JSON.stringify(result), ->
+    .catch (error) ->
+      workingNotification.dismiss()
+      atom.notifications.addError error.name or error, dismissable: true
 
-    w.promise = finishSyntaxSetup
+    w.promise = mooseJSON
 
-  # fetch YAML and syntax data
+  # fetch JSON syntax data
   loadSyntax: (app) ->
     {appPath, appName, appFile, appDate} = app
-
-    # we store syntax data here:
-    cacheDir = path.join __dirname, '..', 'cache'
-    fs.makeTreeSync cacheDir
-    cacheFile = path.join cacheDir, "#{appName}.json"
 
     # prepare entry in the syntax warehouse
     w = syntaxWarehouse[appPath] = {}
 
-    # see if the cache file exists
-    if fs.existsSync cacheFile
-      cacheDate = fs.statSync(cacheFile).mtime.getTime()
+    # do not cache offlineSyntax
+    if appName
+      # we cache syntax data here
+      cacheDir = path.join __dirname, '..', 'cache'
+      fs.makeTreeSync cacheDir
+      cacheFile = path.join cacheDir, "#{appName}.json"
 
-      # if the cacheFile is newer than the app compile date we use the cache
-      if cacheDate > appDate
-        # return chained promises to load and parse the cached syntax
-        loadCache = new Promise (resolve, reject) ->
-          fs.readFile cacheFile, 'utf8', (error, content) ->
-            reject() if error?
-            resolve content
+      # see if the cache file exists
+      if fs.existsSync cacheFile
+        cacheDate = fs.statSync(cacheFile).mtime.getTime()
 
-        .then JSON.parse
+        # if the cacheFile is newer than the app compile date we use the cache
+        if cacheDate > appDate
+          # return chained promises to load and parse the cached syntax
+          loadCache = new Promise (resolve, reject) ->
+            fs.readFile cacheFile, 'utf8', (error, content) ->
+              reject() if error?
+              resolve content
 
-        .then (result) ->
-          delete w.promise
-          w.yaml = result.yaml
-          w.syntax = result.syntax
+          .then JSON.parse
 
-        .catch ->
-          # TODO: rebuild syntax if loading the cache fails
-          atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
-          delete syntaxWarehouse[appPath]
-          fs.unlink(cacheFile)
+          .then (result) ->
+            delete w.promise
+            w.json = result
 
-        w.promise = loadCache
-        return loadCache
+          .catch ->
+            # TODO: rebuild syntax if loading the cache fails
+            atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
+            delete syntaxWarehouse[appPath]
+            fs.unlink cacheFile
+
+          w.promise = loadCache
+          return loadCache
 
     @rebuildSyntax app, cacheFile, w
