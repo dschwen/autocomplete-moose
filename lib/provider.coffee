@@ -627,16 +627,21 @@ module.exports =
           .then JSON.parse
 
           .then (result) ->
+            # validate cache version
+            throw 'Invalid cache' unless 'blocks' of result
+            result
+
+          .then (result) ->
             delete w.promise
             w.json = result
 
-          .catch ->
+          .catch =>
             # TODO: rebuild syntax if loading the cache fails
-            atom.notifications.addError 'Failed to load cached syntax.', dismissable: true
+            atom.notifications.addWarning 'Failed to load cached syntax (probably a legacy cache file).', dismissable: true
             delete syntaxWarehouse[appPath]
-            fs.unlink cacheFile
+            fs.unlink cacheFile, ->
 
           w.promise = loadCache
-          return loadCache
+          return w.promise
 
     @rebuildSyntax app, cacheFile, w
