@@ -614,7 +614,8 @@ module.exports =
 
     .catch (error) ->
       workingNotification.dismiss()
-      atom.notifications.addError error.name or error or "Failed to obtain syntax data", dismissable: true
+      console.log error
+      atom.notifications.addError error?.text or "Failed to obtain syntax data", dismissable: true
 
     w.promise = mooseJSON
 
