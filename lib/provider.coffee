@@ -10,9 +10,7 @@ tree = undefined
 
 # while the Parser is initializing and loading the language, we block its use
 Parser.init().then () =>
-  console.log 'Parser.init() done'
   Parser.Language.load(path.join __dirname,'./tree-sitter-hit.wasm').then (lang) =>
-    console.log 'Parser.Language.load() done'
     parser = new Parser();
     parser.setLanguage(lang);
 
@@ -83,7 +81,7 @@ module.exports =
 
     # lookup application for current input file (cached)
     if @offlineSyntax
-      dir = {appPath: @offlineSyntax, appName: null, appFile: null, appDate: null}
+      dir = {appPath: @offlineSyntax, appName: null, appFile: null, appDate: null, appWSL: null}
     else
       dir = @findApp filePath
 
@@ -107,8 +105,8 @@ module.exports =
     else
       loaded = @loadSyntax dir
       loaded.then =>
-        # watch executable
-        if dir.appFile?
+        # watch executable (unless it's WSL)
+        if dir.appFile? and not dir.appWSL?
           fs.watch dir.appFile, (event, filename) ->
             # force rebuilding of syntax if executable changed
             delete appDirs[filePath]
@@ -504,6 +502,9 @@ module.exports =
     if filePath of appDirs
       return appDirs[filePath]
 
+    # is this a WSL (Windows Subsystem for Linux) path?
+    isWSL = filePath[..6].toLowerCase() == '\\\\wsl$\\'
+
     searchPath = filePath
     matches = []
     loop
@@ -512,12 +513,25 @@ module.exports =
         match = mooseApp.exec(file)
         if match
           fileWithPath = path.join searchPath, file
-          continue if not fs.isExecutableSync fileWithPath
+
+          continue if not isWSL and not fs.isExecutableSync fileWithPath
+
+          fileTime = fs.statSync(fileWithPath).mtime.getTime()
+
+          # convert from Windows to WSL Unix path
+          if isWSL
+            wslPath = fileWithPath[7..].split('\\')
+            fileWithPath = '/' + wslPath[1..].join('/')
+            wslDistro = wslPath[0]
+          else
+            wslDistro = null
+
           matches.push {
             appPath: searchPath
             appName: match[1]
             appFile: fileWithPath
-            appDate: fs.statSync(fileWithPath).mtime.getTime()
+            appDate: fileTime
+            appWSL : wslDistro
           }
 
       if matches.length > 0
@@ -545,7 +559,7 @@ module.exports =
 
   # rebuild syntax
   rebuildSyntax: (app, cacheFile, w) ->
-    {appPath, appName, appFile, appDate} = app
+    {appPath, appName, appFile, appDate, appWSL} = app
 
     # open notification about syntax generation
     workingNotification = atom.notifications.addInfo 'Rebuilding MOOSE syntax data.', {dismissable: true}
@@ -559,7 +573,11 @@ module.exports =
         args = ['--json']
         if atom.config.get "autocomplete-moose.allowTestObjects"
           args.push '--allow-test-objects'
-        moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
+
+        if appWSL
+          moose = cp.spawn 'wsl', ['-d', appWSL, appFile].concat args, {stdio:['pipe','pipe','ignore']}
+        else
+          moose = cp.spawn appFile, args, {stdio:['pipe','pipe','ignore']}
 
         moose.stdout.on 'data', (data) ->
           jsonData += data
@@ -596,7 +614,7 @@ module.exports =
 
     .catch (error) ->
       workingNotification.dismiss()
-      atom.notifications.addError error.name or error, dismissable: true
+      atom.notifications.addError error.name or error or "Failed to obtain syntax data", dismissable: true
 
     w.promise = mooseJSON
 
