@@ -162,7 +162,8 @@ module.exports =
       Object.assign ret, b.actions[n].parameters
 
     # if the type is known add the specific parameters
-    Object.assign ret, b?.subblock_types?[explicitType]?.parameters
+    t = b?.subblock_types?[explicitType] || b?.types?[explicitType]
+    Object.assign ret, t?.parameters
 
     ret
 
@@ -172,6 +173,8 @@ module.exports =
     b = @getSyntaxNode configPath, w
     for n of b?.subblock_types
       ret.push {text: n, description: b.subblock_types[n].description}
+    for n of b?.types
+      ret.push {text: n, description: b.types[n].description}
 
     ret
 
