@@ -1,3 +1,7 @@
+## 1.2.0
+* Bug fix: Fix completion in fixed path blocks like [Executioner][]
+* Improvement: Use WebAssembly version of tree-sitter to avoid node-gyp pains (Python and Windows incompatibilities)
+
 ## 1.1.0
 * Improvement: Use JSON syntax output from MOOSE
 
