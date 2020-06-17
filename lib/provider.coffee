@@ -3,13 +3,18 @@ cp = require 'child_process'
 path = require 'path'
 readline = require 'readline'
 
-Parser = require 'tree-sitter'
-Hit = require 'tree-sitter-hit'
+Parser = require 'web-tree-sitter'
 
-parser = new Parser();
-parser.setLanguage(Hit);
-parser.inUse = false
+parser = undefined
 tree = undefined
+
+# while the Parser is initializing and loading the language, we block its use
+Parser.init().then () =>
+  console.log 'Parser.init() done'
+  Parser.Language.load(path.join __dirname,'./tree-sitter-hit.wasm').then (lang) =>
+    console.log 'Parser.Language.load() done'
+    parser = new Parser();
+    parser.setLanguage(lang);
 
 emptyLine = /^\s*$/
 insideBlockTag = /^\s*\[([^\]#\s]*)$/
@@ -113,22 +118,16 @@ module.exports =
         @prepareCompletion request, syntaxWarehouse[dir.appPath]
 
   prepareCompletion: (request, w) ->
-    # bail early if the parser is still in use
-    if parser.inUse
-      return
-
-    # asynchronous tree update
-    parser.inUse = true
-    parser.parseTextBuffer(request.editor.getBuffer().buffer, tree).then (newtree) =>
-      tree = newtree
-      parser.inUse = false
-      @computeCompletion request, w
+    # tree update
+    return unless parser?
+    tree = parser.parse request.editor.getBuffer().getText()
+    @computeCompletion request, w
 
   # get the node in the JSON stucture for the current block level
   getSyntaxNode: (configPath, w) ->
     # no parameters at the root
     if configPath.length == 0
-      return undefiend
+      return undefined
 
     # traverse subblocks
     b = w.json.blocks[configPath[0]]
