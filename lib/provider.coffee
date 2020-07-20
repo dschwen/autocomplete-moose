@@ -514,9 +514,15 @@ module.exports =
         if match
           fileWithPath = path.join searchPath, file
 
+          # on non-WSL systems we make sure the matched path is executable
           continue if not isWSL and not fs.isExecutableSync fileWithPath
 
-          fileTime = fs.statSync(fileWithPath).mtime.getTime()
+          stats = fs.statSync(fileWithPath)
+
+          # ignore directories that match the naming pattern
+          continue if not isWSL and stats.isDirectory()
+
+          fileTime = stats.mtime.getTime()
 
           # convert from Windows to WSL Unix path
           if isWSL
