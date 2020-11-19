@@ -1,3 +1,12 @@
+## 1.4.0
+* Bug fix: Utilize default values for type parameter. Brings back full completion in [Problem][] and variable blocks
+
+## 1.3.1
+* Bug fix: Skip directories that look like MOOSE executable names
+
+## 1.3.0
+* Improvement: Add support for inputs located in WSL2 containers
+
 ## 1.2.0
 * Bug fix: Fix completion in fixed path blocks like [Executioner][]
 * Improvement: Use WebAssembly version of tree-sitter to avoid node-gyp pains (Python and Windows incompatibilities)
