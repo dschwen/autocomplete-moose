@@ -1,3 +1,5 @@
+# coffeelint: disable=max_line_length
+
 fs = require 'fs-plus'
 cp = require 'child_process'
 path = require 'path'
@@ -9,10 +11,10 @@ parser = undefined
 tree = undefined
 
 # while the Parser is initializing and loading the language, we block its use
-Parser.init().then () =>
-  Parser.Language.load(path.join __dirname,'./tree-sitter-hit.wasm').then (lang) =>
-    parser = new Parser();
-    parser.setLanguage(lang);
+Parser.init().then () ->
+  Parser.Language.load(path.join __dirname,'./tree-sitter-hit.wasm').then (lang) ->
+    parser = new Parser()
+    parser.setLanguage(lang)
 
 emptyLine = /^\s*$/
 insideBlockTag = /^\s*\[([^\]#\s]*)$/
@@ -159,8 +161,11 @@ module.exports =
     for n of b?.actions
       Object.assign ret, b.actions[n].parameters
 
+    # if no type is explicitly set check if a default value exists
+    currentType = explicitType || ret?.type?.default
+
     # if the type is known add the specific parameters
-    t = b?.subblock_types?[explicitType] || b?.types?[explicitType]
+    t = b?.subblock_types?[currentType] || b?.types?[currentType]
     Object.assign ret, t?.parameters
 
     ret
@@ -330,7 +335,7 @@ module.exports =
     # for empty [] we suggest blocks
     if @isOpenBracketPair(line)
       # get a partial path
-      partialPath = line.match(insideBlockTag)[1].replace(/^\.\//, '').split('/');
+      partialPath = line.match(insideBlockTag)[1].replace(/^\.\//, '').split('/')
       partialPath.pop()
 
       # get the postfix (to determine if we need to append a ] or not)
@@ -661,8 +666,9 @@ module.exports =
           .then (result) ->
             delete w.promise
             w.json = result
+            console.log w
 
-          .catch =>
+          .catch ->
             # TODO: rebuild syntax if loading the cache fails
             atom.notifications.addWarning 'Failed to load cached syntax (probably a legacy cache file).', dismissable: true
             delete syntaxWarehouse[appPath]
