@@ -226,8 +226,9 @@ module.exports =
         {text: 'false'}
       ]
 
-    if (param.cpp_type == 'MooseEnum' and singleOK) or
-       (param.cpp_type == 'MultiMooseEnum' and vectorOK)
+    if 'options' of param and param.options and
+       ((param.basic_type == 'String' and singleOK) or
+       (param.basic_type == 'Array:String' and vectorOK))
       if param.options?
         completions = []
         for option in param.options.split ' '
@@ -239,22 +240,22 @@ module.exports =
     match = param.cpp_type.match /^std::vector<([^>]+)>$/
     if (match and not vectorOK) or (not match and not singleOK)
       return []
-    basicType = if match then match[1] else param.cpp_type
+    innerType = if match then match[1] else param.cpp_type
 
-    if basicType == 'FileName'
+    if innerType == 'FileName'
       return @computeFileNameCompletion ['*'], editor
 
-    if basicType == 'MeshFileName'
+    if innerType == 'MeshFileName'
       return @computeFileNameCompletion ['*.e'], editor
 
-    if basicType == 'OutputName'
+    if innerType == 'OutputName'
       return ({text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr'])
 
     # automatically generated matches from registerSyntaxType
-    if basicType of w.json.global.associated_types
+    if innerType of w.json.global.associated_types
       buildBlockList tree.rootNode
       completions = []
-      matches = new Set(w.json.global.associated_types[basicType])
+      matches = new Set(w.json.global.associated_types[innerType])
       matches.forEach (match) ->
         if match[-2..] == '/*'
           key = match[..-2]

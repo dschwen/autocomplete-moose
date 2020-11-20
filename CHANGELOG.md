@@ -1,3 +1,6 @@
+## 1.5.1
+* Improvement: More general enum completion (adds support for ExecFlagEnum)
+
 ## 1.5.0
 * Improvement: Complete block names for types added with registerSyntaxType (VariableName, MarkerName, FunctionName...)
 
