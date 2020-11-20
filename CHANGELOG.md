@@ -1,3 +1,6 @@
+## 1.5.0
+* Improvement: Complete block names for types added with registerSyntaxType (VariableName, MarkerName, FunctionName...)
+
 ## 1.4.0
 * Bug fix: Utilize default values for type parameter. Brings back full completion in [Problem][] and variable blocks
 
