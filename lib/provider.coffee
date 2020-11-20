@@ -248,9 +248,6 @@ module.exports =
     if innerType == 'MeshFileName'
       return @computeFileNameCompletion ['*.e'], editor
 
-    if innerType == 'OutputName'
-      return ({text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr'])
-
     # automatically generated matches from registerSyntaxType
     if innerType of w.json.global.associated_types
       buildBlockList tree.rootNode
@@ -262,6 +259,11 @@ module.exports =
           for block in blockList
             if block[..key.length-1] == key
               completions.push {text: block[key.length..]}
+
+      if innerType == 'OutputName'
+        common_outputs = ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'json', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr', 'xmloutput']
+        completions.push {text: output, iconHTML: suggestionIcon.output} for output in common_outputs
+
       return completions
 
     return []

@@ -1,3 +1,6 @@
+## 1.5.2
+* Improvement: List [Outputs/*] blocks in addition to built in outputs
+
 ## 1.5.1
 * Improvement: More general enum completion (adds support for ExecFlagEnum)
 
