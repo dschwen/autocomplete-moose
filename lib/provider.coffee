@@ -259,8 +259,7 @@ module.exports =
 
   # build the suggestion list for parameter values (editor is passed in
   # to build the variable list)
-  computeValueCompletion: (param, editor, isQuoted, hasSpace) ->
-    completions = []
+  computeValueCompletion: (param, editor, isQuoted, hasSpace, w) ->
     singleOK = not hasSpace
     vectorOK = isQuoted or not hasSpace
 
@@ -268,50 +267,59 @@ module.exports =
       return (param.cpp_type == type and singleOK) or
              (@isVectorOf(param.cpp_type, type) and vectorOK)
 
+    blockList = []
+    buildBlockList = (node, oldPath) ->
+      for c in node.children
+        if c.type == 'top_block' || c.type == 'block'
+          block = c.children[1].text
+          block = block[2..] if block[..1] == './'
+          newPath = (if oldPath then oldPath + '/' else '') + block
+          blockList.push newPath
+          buildBlockList c, newPath
+
     if (param.cpp_type == 'bool' and singleOK) or
        (@isVectorOf(param.cpp_type, 'bool') and vectorOK)
-      completions = [
+      return [
         {text: 'true'}
         {text: 'false'}
       ]
 
-    else if (param.cpp_type == 'MooseEnum' and singleOK) or
-            (param.cpp_type == 'MultiMooseEnum' and vectorOK)
+    if (param.cpp_type == 'MooseEnum' and singleOK) or
+       (param.cpp_type == 'MultiMooseEnum' and vectorOK)
       if param.options?
+        completions = []
         for option in param.options.split ' '
           completions.push {
             text: option
           }
+        return completions
 
-    else if hasType 'NonlinearVariableName'
-      completions = @computeVariableCompletion ['Variables'], editor
+    match = param.cpp_type.match /^std::vector<([^>]+)>$/
+    if (match and not vectorOK) or (not match and not singleOK)
+      return []
+    basicType = if match then match[1] else param.cpp_type
 
-    else if hasType 'AuxVariableName'
-      completions = @computeVariableCompletion ['AuxVariables'], editor
+    if basicType == 'FileName'
+      return @computeFileNameCompletion ['*'], editor
 
-    else if hasType 'VariableName'
-      completions = @computeVariableCompletion ['Variables', 'AuxVariables'], editor
+    if basicType == 'MeshFileName'
+      return @computeFileNameCompletion ['*.e'], editor
 
-    else if hasType 'FunctionName'
-      completions = @computeSubBlockNameCompletion ['Functions'], ['type'], editor
+    if basicType == 'OutputName'
+      return ({text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr'])
 
-    else if hasType 'PostprocessorName'
-      completions = @computeSubBlockNameCompletion ['Postprocessors'], ['type'], editor
-
-    else if hasType 'UserObjectName'
-      completions = @computeSubBlockNameCompletion ['Postprocessors', 'UserObjects'], ['type'], editor
-
-    else if hasType 'VectorPostprocessorName'
-      completions = @computeSubBlockNameCompletion ['VectorPostprocessors'], ['type'], editor
-
-    else if (param.cpp_type == 'OutputName' and singleOK) or
-            (@isVectorOf(param.cpp_type, 'OutputName') and vectorOK)
-      completions.push {text: output, iconHTML: suggestionIcon.output} for output in ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr']
-
-    else if (hasType 'FileName') or (hasType 'MeshFileName')
-      completions = @computeFileNameCompletion ['*.e'], editor
-
-    completions
+    # automatically generated matches from registerSyntaxType
+    if basicType of w.json.global.associated_types
+      buildBlockList tree.rootNode
+      completions = []
+      matches = new Set(w.json.global.associated_types[basicType])
+      matches.forEach (match) ->
+        if match[-2..] == '/*'
+          key = match[..-2]
+          for block in blockList
+            if block[..key.length-1] == key
+              completions.push {text: block[key.length..]}
+      return completions
 
   getPrefix: (line) ->
     # Whatever your prefix regex might be
@@ -417,7 +425,7 @@ module.exports =
       if paramName == 'type' and param.cpp_type == 'std::string'
         completions = @getTypes configPath, w
       else
-        completions = @computeValueCompletion param, editor, isQuoted, hasSpace
+        completions = @computeValueCompletion param, editor, isQuoted, hasSpace, w
 
     # set the custom prefix
     for completion in completions
@@ -666,7 +674,6 @@ module.exports =
           .then (result) ->
             delete w.promise
             w.json = result
-            console.log w
 
           .catch ->
             # TODO: rebuild syntax if loading the cache fails
