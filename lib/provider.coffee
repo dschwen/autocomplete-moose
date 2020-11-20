@@ -16,18 +16,12 @@ Parser.init().then () ->
     parser = new Parser()
     parser.setLanguage(lang)
 
-emptyLine = /^\s*$/
 insideBlockTag = /^\s*\[([^\]#\s]*)$/
 
 parameterCompletion = /^\s*[^\s#=\]]*$/
 
 typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/
 otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/
-
-# legacy regexp
-blockCloseTop = /\[\]/
-blockOpenOneLevel = /\[\.\/([^.\/]+)\]/
-blockCloseOneLevel = /\[\.\.\/\]/
 
 mooseApp = /^(.*)-(opt|dbg|oprof|devel)$/
 stdVector = /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/
@@ -75,6 +69,7 @@ module.exports =
       delete appDirs[filePath]
       delete syntaxWarehouse[appPath] if appPath of syntaxWarehouse
 
+
   # entry point for the suggestion provider
   # this function will load the syntax files if neccessary before callling
   # the actual completion suggestion builder
@@ -117,11 +112,13 @@ module.exports =
         # perform completion
         @prepareCompletion request, syntaxWarehouse[dir.appPath]
 
+
   prepareCompletion: (request, w) ->
     # tree update
     return unless parser?
     tree = parser.parse request.editor.getBuffer().getText()
     @computeCompletion request, w
+
 
   # get the node in the JSON stucture for the current block level
   getSyntaxNode: (configPath, w) ->
@@ -137,6 +134,7 @@ module.exports =
         return undefined
     b
 
+
   # get a list of valid subblocks
   getSubblocks: (configPath, w) ->
     # get top level blocks
@@ -150,6 +148,7 @@ module.exports =
       ret.push '*'
 
     return ret.sort()
+
 
   # get a list of parameters for the current block
   # if the type parameter is known add in class specific parameters
@@ -170,6 +169,7 @@ module.exports =
 
     ret
 
+
   # get a list of possible completions for the type parameter at the current block level
   getTypes: (configPath, w) ->
     ret = []
@@ -181,65 +181,6 @@ module.exports =
 
     ret
 
-  # parse current file and gather subblocks of a given top block (Functions,
-  # PostProcessors)
-  fetchSubBlockList: (blockName, propertyNames, editor) ->
-    i = 0
-    level = 0
-    subBlockList = []
-    filterList = ({name: property, re: new RegExp "^\\s*#{property}\\s*=\\s*([^\\s#=\\]]+)$"} for property in propertyNames)
-
-    nlines = editor.getLineCount()
-
-    # find start of selected block
-    i++ while i < nlines and editor.lineTextForBufferRow(i).indexOf('[' + blockName + ']') == -1
-
-    # parse contents of subBlock block
-    loop
-      break if i >= nlines
-      line = editor.lineTextForBufferRow i
-      break if blockCloseTop.test line
-
-      if blockOpenOneLevel.test line
-        if level == 0
-          subBlock = {name: blockOpenOneLevel.exec(line)[1], properties: {}}
-        level++
-
-      else if blockCloseOneLevel.test(line)
-        level--
-        if level == 0
-          subBlockList.push subBlock
-
-      else if level == 1
-        for filter in filterList
-          if match = filter.re.exec line
-            subBlock.properties[filter.name] = match[1]
-            break
-
-      i++
-
-    subBlockList
-
-  # generic completion list builder for subblock names
-  computeSubBlockNameCompletion: (blockNames, propertyNames, editor) ->
-    completions = []
-    for block in blockNames
-      for {name, properties} in @fetchSubBlockList block, propertyNames, editor
-        doc = []
-        for propertyName in propertyNames
-          if propertyName of properties
-            doc.push properties[propertyName]
-
-        completions.push {
-          text: name
-          description: doc.join ' '
-        }
-
-    completions
-
-  # variable completions
-  computeVariableCompletion: (blockNames, editor) ->
-    @computeSubBlockNameCompletion blockNames, ['order', 'family'], editor
 
   # Filename completions
   computeFileNameCompletion: (wildcards, editor) ->
@@ -251,6 +192,7 @@ module.exports =
       completions.push { text: name }
 
     completions
+
 
   # checks if this is a vector type build the vector cpp_type name for a
   # given single type (checks for gcc and clang variants)
@@ -321,12 +263,16 @@ module.exports =
               completions.push {text: block[key.length..]}
       return completions
 
+    return []
+
+
   getPrefix: (line) ->
     # Whatever your prefix regex might be
     regex = /[\w0-9_\-.\/\[]+$/
 
     # Match the regex to the line, and return the match
     line.match(regex)?[0] or ''
+
 
   # w contains the syntax applicable to the current file
   computeCompletion: (request, w) ->
@@ -433,19 +379,24 @@ module.exports =
 
     completions
 
+
   onDidInsertSuggestion: ({editor, suggestion}) ->
     setTimeout(@triggerAutocomplete.bind(this, editor), 1) if suggestion.type is 'property'
 
+
   triggerAutocomplete: (editor) ->
     atom.commands.dispatch(atom.views.getView(editor), 'autocomplete-plus:activate', {activatedManually: false})
+
 
   # check if there is an square bracket pair around the cursor
   isOpenBracketPair: (line) ->
     return insideBlockTag.test line
 
+
   # check if the current line is a type parameter
   isParameterCompletion: (line) ->
     parameterCompletion.test line
+
 
   # determine the active input file path at the current position
   getCurrentConfigPath: (editor, position) ->
@@ -506,6 +457,7 @@ module.exports =
 
     # return value
     ret
+
 
   findApp: (filePath) ->
     if not filePath?
@@ -576,6 +528,7 @@ module.exports =
           unless  atom.config.get "autocomplete-moose.ignoreMooseNotFoundError"
         return null
 
+
   # rebuild syntax
   rebuildSyntax: (app, cacheFile, w) ->
     {appPath, appName, appFile, appDate, appWSL} = app
@@ -637,6 +590,7 @@ module.exports =
       atom.notifications.addError error?.text or "Failed to obtain syntax data", dismissable: true
 
     w.promise = mooseJSON
+
 
   # fetch JSON syntax data
   loadSyntax: (app) ->
