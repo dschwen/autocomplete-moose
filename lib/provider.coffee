@@ -336,7 +336,7 @@ module.exports =
         if @hideDeprecatedParams and param.deprecated
           continue
 
-        defaultValue = param.default or ''
+        defaultValue = String(param.default or '')
         defaultValue = "'#{defaultValue}'" if defaultValue.indexOf(' ') >= 0
 
         if param.cpp_type == 'bool'
